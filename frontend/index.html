@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!--CSP-->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Leash</title>
   <meta name="description" content="Leash gives every AI agent a budget it can't overspend and a record it can't fake. Your API key stays encrypted where the agent can't reach it.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/landing.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/landing.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='16' r='6' fill='none' stroke='%232b4c7e' stroke-width='3'/%3E%3Ccircle cx='22' cy='16' r='6' fill='none' stroke='%232f7d5b' stroke-width='3'/%3E%3C/svg%3E">
 </head>
 <body class="landing">
@@ -19,9 +20,8 @@
     <div class="nav-links">
       <a href="#why-leash">Why Leash</a>
       <a href="#how-it-works">How it works</a>
-      <a href="#plans">Plans</a>
-      <a href="/login" class="nav-keep">Log in</a>
-      <a href="/signup" class="btn btn-primary">Start free</a>
+      <a href="https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash" class="nav-keep" target="_blank" rel="noopener">GitHub</a>
+      <a href="/try" class="btn btn-primary">Try the demo</a>
     </div>
   </nav>
 
@@ -31,7 +31,7 @@
       <p class="lede">Leash gives every AI agent a signed pass with a hard money limit, keeps your API key encrypted where the agent can't reach it, and seals every call into a record nobody can quietly rewrite.</p>
       <div class="hero-actions">
         <a href="/try" class="btn btn-primary btn-big">Watch a real agent hit its limit</a>
-        <a href="/signup" class="btn btn-big">Start free</a>
+        <a href="https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash" class="btn btn-big" target="_blank" rel="noopener">Self-host from GitHub</a>
       </div>
       <p class="hero-note">The demo uses a real AI and real money, in fractions of a cent, paid by us. No sign-up needed.</p>
     </div>
@@ -263,55 +263,15 @@ client = OpenAI(
         </div>
       </div>
     </section>
-    <section class="band" id="plans" aria-labelledby="plans-title">
-      <div class="band-inner">
-        <h2 id="plans-title">Plans</h2>
-        <p class="section-lede">Leash is free while it's new. Paid plans for larger teams are planned.</p>
-        <div class="plans">
-          <article class="plan plan-now">
-            <h3>Free</h3>
-            <p class="plan-status">Available now</p>
-            <ul>
-              <li>Up to 10 saved AI keys</li>
-              <li>Up to 500 live agent passes</li>
-              <li>Slack and Discord alerts</li>
-              <li>Trap keys and leak blocking</li>
-              <li>A record nobody can quietly edit</li>
-            </ul>
-            <a href="/signup" class="btn btn-primary">Start free</a>
-          </article>
-          <article class="plan">
-            <h3>Team</h3>
-            <p class="plan-status">Coming soon</p>
-            <ul>
-              <li>Everything in Free</li>
-              <li>Several people per workspace, with roles</li>
-              <li>Monthly limits per agent that renew</li>
-              <li>Longer record history and exports</li>
-            </ul>
-          </article>
-          <article class="plan">
-            <h3>Business</h3>
-            <p class="plan-status">Coming soon</p>
-            <ul>
-              <li>Everything in Team</li>
-              <li>Single sign-on</li>
-              <li>Your own master key, in your cloud</li>
-              <li>Choice of data region</li>
-            </ul>
-          </article>
-        </div>
-      </div>
-    </section>
       <div class="band-inner tab-step-wrap"><div data-tab-step></div></div>
     </div>
 
     <section class="cta" aria-labelledby="cta-title">
       <h2 id="cta-title">Put your agents on a leash</h2>
-      <p>Create a free workspace in about a minute. Save your key, set a budget, and run a test agent on your own key before connecting your real one.</p>
+      <p>Watch a real agent hit its limit and try to fake the record in the live demo, then run Leash for your own agents from the source code.</p>
       <div class="hero-actions">
-        <a href="/signup" class="btn btn-primary btn-big">Start free</a>
-        <a href="/try" class="btn btn-big">Watch a real agent hit its limit</a>
+        <a href="/try" class="btn btn-primary btn-big">Watch a real agent hit its limit</a>
+        <a href="https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash" class="btn btn-big" target="_blank" rel="noopener">Self-host from GitHub</a>
       </div>
     </section>
   </main>
@@ -319,10 +279,10 @@ client = OpenAI(
   <footer class="foot">
     <p>Leash was built for the Safety by Design track.</p>
     <div class="foot-links">
-      <!--REPO_LINK-->
-      <a href="/control">Operator sign-in</a>
+      <a href="https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash" rel="noopener">Source code on GitHub</a>
+      <a href="https://www.smubia.com/ai-lodge" rel="noopener">An SMU BIA AI Lodge project</a>
     </div>
   </footer>
-  <script src="/static/tabs.js"></script>
+  <script src="/tabs.js"></script>
 </body>
 </html>

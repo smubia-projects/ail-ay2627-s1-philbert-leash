@@ -16,19 +16,28 @@ const money = (n) => "$" + Number(n || 0).toFixed(2);
 const short = (h) => (h ? h.slice(0, 10) + "…" : "");
 const timeOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-const store = {
-  get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { sessionStorage.setItem(k, v); } catch { /* storage unavailable */ } },
-  del(k) { try { sessionStorage.removeItem(k); } catch { /* storage unavailable */ } },
+// The public demo at /try: one isolated sandbox per visitor. The API lives on
+// another origin (Cloud Run); config.js, written at build time, says where.
+const MODE = "sandbox";
+const SERVER = String(window.VITE_API_BASE || "http://localhost:8787").replace(/\/+$/, "");
+const API_BASE = SERVER + "/api/sb";
+
+// The sandbox id is sent in a header (the API is cross-origin, so no cookies).
+// localStorage keeps it across reloads and tabs; it can be unavailable.
+const SESSION_KEY = "ail-ay2627-s1-philbert-leash:session";
+const session = {
+  id: "",
+  get() {
+    if (!this.id) { try { this.id = localStorage.getItem(SESSION_KEY) || ""; } catch { /* storage unavailable */ } }
+    return this.id;
+  },
+  set(id) {
+    this.id = id || "";
+    try { localStorage.setItem(SESSION_KEY, this.id); } catch { /* storage unavailable */ }
+  },
 };
 
-// "operator": the password-protected control room at /control.
-// "sandbox": the public demo at /try, isolated per visitor by a cookie.
-const MODE = document.body.dataset.mode === "sandbox" ? "sandbox" : "operator";
-const API_BASE = MODE === "sandbox" ? "/api/sb" : "/api";
-
 const state = {
-  key: MODE === "operator" ? store.get("leash-admin") || "" : "",
   config: null,
   canaries: [],
   seenIds: new Set(),
@@ -37,13 +46,29 @@ const state = {
 };
 
 function authHeaders() {
-  return MODE === "sandbox" ? { "X-Leash-Sandbox": "1" } : { "X-Admin-Key": state.key };
+  const id = session.get();
+  return id ? { "X-Leash-Session": id } : {};
+}
+
+// Error text from a FastAPI error body: a string, or {message} from the rate limiter.
+function errorText(data, status) {
+  const d = data && data.detail;
+  if (typeof d === "string") return d;
+  if (d && typeof d.message === "string") return d.message;
+  return `Request failed (${status})`;
 }
 
 async function openSandbox() {
-  const res = await fetch("/api/sb/session", { method: "POST", headers: { "X-Leash-Sandbox": "1" } });
+  let res;
+  try {
+    res = await fetch(API_BASE + "/session", { method: "POST", headers: authHeaders() });
+  } catch {
+    throw new Error("Couldn't reach the Leash server. Reload the page to try again.");
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || "Couldn't open a sandbox. Reload the page to try again.");
+  if (res.status === 503) LeashCTA.showPaused(errorText(data, res.status));
+  if (!res.ok) throw new Error(errorText(data, res.status));
+  session.set(data.session);
   return data;
 }
 
@@ -53,18 +78,30 @@ async function api(path, options = {}, retried = false) {
     ...options,
     headers: { "Content-Type": "application/json", ...authHeaders(), ...(options.headers || {}) },
   });
-  if (res.status === 401) {
-    if (MODE === "sandbox" && !retried) {
-      // The sandbox expired: open a fresh one and try once more.
-      await openSandbox();
-      state.seenIds.clear();
-      return api(path, options, true);
-    }
-    if (MODE === "operator") signOut("That password didn't work. Try again.");
-    throw new Error("unauthorized");
+  if (res.status === 401 && !retried) {
+    // The sandbox expired: open a fresh one and try once more.
+    await openSandbox();
+    state.seenIds.clear();
+    return api(path, options, true);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  if (res.status === 401) throw new Error("unauthorized");
+  // 429 carrying queries_used comes from the shared rate limiter: show the AI Lodge CTA.
+  // 503 means an operator paused the demo: show the paused notice, never the CTA.
+  if (res.status === 429 && data.detail && typeof data.detail === "object" && "queries_used" in data.detail) {
+    LeashCTA.showRateLimit(data.detail.queries_used);
+    const err = new Error("You've used this demo's real-AI agent runs for now.");
+    err.rateLimited = true;
+    throw err;
+  }
+  if (res.status === 503) {
+    const message = errorText(data, res.status);
+    LeashCTA.showPaused(message);
+    const err = new Error(message);
+    err.paused = true;
+    throw err;
+  }
+  if (!res.ok) throw new Error(errorText(data, res.status));
   return data;
 }
 
@@ -73,7 +110,7 @@ async function agentCall(token, content, { path = "/v1/chat/completions", model 
   const headers = { "Content-Type": "application/json" };
   if (token) headers.Authorization = "Bearer " + token;
   const body = { model, messages: [{ role: "user", content }], ...extra };
-  const res = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(SERVER + path, { method: "POST", headers, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   return {
     ok: res.ok,
@@ -89,63 +126,21 @@ function setOutcome(el, html, tone) {
   el.className = "outcome" + (tone ? " " + tone : "");
 }
 
-// ---------------------------------------------------------------------------
-// Sign in / out
-// ---------------------------------------------------------------------------
-$("#gate-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  state.key = $("#gate-pw").value;
-  $("#gate-error").textContent = "";
-  try {
-    await start();
-    store.set("leash-admin", state.key);
-  } catch (err) {
-    if (err.message !== "unauthorized") $("#gate-error").textContent = err.message;
-  }
-});
-
-function signOut(message) {
-  state.key = "";
-  store.del("leash-admin");
-  clearInterval(state.pollTimer);
-  $("#gate").hidden = false;
-  $("#gate-error").textContent = message || "";
-  $("#gate-pw").value = "";
-  $("#gate-pw").focus();
-}
-$("#logout").addEventListener("click", () => signOut(""));
-
 async function start() {
-  if (MODE === "sandbox") await openSandbox();
+  await openSandbox();
   state.config = await api("/config");
   state.canaries = await api("/canaries");
-  $("#gate").hidden = true;
 
-  if (MODE === "sandbox") {
-    $("#upstream-badge").textContent = state.config.real_demo?.available
-      ? `Real AI in Demo 1, capped at ${+(state.config.real_demo.visitor_budget_usd * 100).toFixed(2)}¢ for you`
-      : "Fake AI only, nothing costs money";
-  } else {
-    updateAiBadge();
-  }
-  if (state.config.openai_enabled) {
-    $("#real-section").hidden = false;
-    $("#real-model").textContent = state.config.openai_model;
-  } else {
-    $("#issue-upstream").querySelector('option[value="openai"]').remove();
-  }
+  $("#upstream-badge").textContent = state.config.real_demo?.available
+    ? `Real AI in Demo 1, capped at ${+(state.config.real_demo.visitor_budget_usd * 100).toFixed(2)}¢ for you`
+    : "Fake AI only, nothing costs money";
   renderPoison();
   renderCanaries();
-  if (MODE === "sandbox") {
-    $("#key-form").elements.base_url.closest("label").hidden = true; // the sandbox only uses the fake AI
-  }
-  await loadKeys();
-  await loadHook();
   if (!state.run) {
     state.run = LeashRun.mount($("#agent-run"), {
       api,
+      server: SERVER,
       mode: MODE,
-      realChoices: realAgentChoices,
       onReset: () => {
         state.verify = null;
         state.seenIds.clear();
@@ -167,7 +162,6 @@ async function start() {
 // Live data
 // ---------------------------------------------------------------------------
 async function refresh() {
-  if (MODE === "operator" && !state.key) return; // signed out
   try {
     const [stats, tokens, alerts, chain] = await Promise.all([
       api("/stats"),
@@ -323,56 +317,6 @@ function paintVerify(result, animate) {
     else li.classList.add(cls);
   });
 }
-
-// ---------------------------------------------------------------------------
-// Slack or Discord alerts (control room only)
-// ---------------------------------------------------------------------------
-function hookMsg(text, tone) {
-  const el = $("#hook-msg");
-  el.textContent = text || "";
-  el.className = "hook-mini-msg" + (tone ? " " + tone : "");
-}
-
-async function loadHook() {
-  if (MODE !== "operator") return;
-  const hook = await api("/webhook");
-  $("#hook-test").hidden = !hook.set;
-  $("#hook-remove").hidden = !hook.set;
-  $("#hook-save").textContent = hook.set ? "Replace" : "Save";
-  if (hook.set) hookMsg(`Alerts go to ${hook.kind === "discord" ? "Discord" : "Slack"} (${hook.hint}), stored encrypted.`, "good");
-  else hookMsg("");
-}
-
-$("#hook-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const input = e.target.elements.url;
-  if (!input.value.trim()) return hookMsg("Paste a webhook address first.", "bad");
-  try {
-    await api("/webhook", { method: "POST", body: JSON.stringify({ url: input.value.trim() }) });
-    input.value = "";
-    await loadHook();
-  } catch (err) {
-    hookMsg(err.message, "bad");
-  }
-});
-
-$("#hook-test").addEventListener("click", async () => {
-  try {
-    const r = await api("/webhook/test", { method: "POST" });
-    hookMsg(r.ok ? "Test alert sent. Check your channel." : r.error, r.ok ? "good" : "bad");
-  } catch (err) {
-    hookMsg(err.message, "bad");
-  }
-});
-
-$("#hook-remove").addEventListener("click", async () => {
-  try {
-    await api("/webhook/remove", { method: "POST" });
-    await loadHook();
-  } catch (err) {
-    hookMsg(err.message, "bad");
-  }
-});
 
 // ---------------------------------------------------------------------------
 // Kill switch
@@ -582,8 +526,6 @@ $("#t-reset").addEventListener("click", async () => {
   $("#l-calls-bar").style.width = "0";
   $("#l-budget-bar").style.width = "0";
   $("#l-budget-bar").classList.remove("full");
-  keyResults.clear();
-  await loadKeys();
   refresh();
 });
 
@@ -604,14 +546,12 @@ $("#issue-form").addEventListener("submit", async (e) => {
         budget_usd: Number(f.get("budget_usd")),
       }),
     });
-    const up = issued.claims.upstream;
-    const stored = storedKeys.find((k) => k.id === up);
-    const model = up === "openai" ? state.config.openai_model : stored ? stored.model : "fake-model";
+    const model = "fake-model";
     $("#issued").hidden = false;
     $("#issued-token").textContent = issued.token;
     $("#issued-snippet").textContent =
       `from openai import OpenAI\n\n` +
-      `client = OpenAI(\n    base_url="${location.origin}/v1",\n    api_key="${issued.token.slice(0, 16)}…",  # your Leash token\n)\n` +
+      `client = OpenAI(\n    base_url="${SERVER}/v1",\n    api_key="${issued.token.slice(0, 16)}…",  # your Leash token\n)\n` +
       `reply = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Hello"}],\n)`;
     refresh();
   } catch (err) {
@@ -629,303 +569,9 @@ $("#copy-token").addEventListener("click", async () => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Bring your own key: stored provider keys, encrypted on the server
-// ---------------------------------------------------------------------------
-let storedKeys = [];
-const keyResults = new Map(); // id -> {html, tone}, kept across re-renders
-const openDetails = new Set(); // ids whose "What the database stores" is open
-
-async function loadKeys() {
-  storedKeys = await api("/connections");
-  renderKeys();
-  syncUpstreamOptions();
-}
-
-// Plain-language summary of which AI the control room can use.
-function updateAiBadge() {
-  if (MODE !== "operator" || !state.config) return;
-  const models = new Set();
-  if (state.config.openai_enabled && state.config.openai_model) models.add(state.config.openai_model);
-  storedKeys.filter((k) => k.status === "active").forEach((k) => models.add(k.model));
-  $("#upstream-badge").textContent = models.size
-    ? `Real AI connected: ${[...models].join(", ")}`
-    : "Fake AI only, no real key connected";
-}
-
-function syncUpstreamOptions() {
-  updateAiBadge();
-  const select = $("#issue-upstream");
-  select.querySelectorAll("option[data-key]").forEach((o) => o.remove());
-  storedKeys
-    .filter((k) => k.status === "active")
-    .forEach((k) => {
-      const option = document.createElement("option");
-      option.value = k.id;
-      option.dataset.key = "1";
-      option.textContent = `Saved key: ${k.name}`;
-      select.appendChild(option);
-    });
-  syncRealAgentOptions();
-}
-
-// ---------------------------------------------------------------------------
-// Step 5 (control room only): a real AI agent on a leash
-// ---------------------------------------------------------------------------
-function realAgentChoices() {
-  const choices = [];
-  storedKeys
-    .filter((k) => k.status === "active")
-    .forEach((k) => choices.push({ value: k.id, model: k.model, label: `Saved key: ${k.name} (${k.model})` }));
-  if (state.config && state.config.openai_enabled) {
-    choices.push({ value: "openai", model: state.config.openai_model, label: `Server key (${state.config.openai_model})` });
-  }
-  return choices;
-}
-
-function syncRealAgentOptions() {
-  if (MODE !== "operator") return;
-  syncStoryOptions();
-  const select = $("#ra-upstream");
-  const previous = select.value;
-  const choices = realAgentChoices();
-  select.innerHTML = choices.map((c) => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join("");
-  // Keep the person's own pick; otherwise default to the first option (a saved key, if any).
-  if (select.dataset.touched && choices.some((c) => c.value === previous)) select.value = previous;
-  const running = $("#ra-revoke").disabled === false;
-  $("#ra-start").disabled = running || choices.length === 0;
-  if (!choices.length) {
-    setOutcome($("#ra-outcome"), "Add your key under <strong>Bring your own key</strong> first, then come back here.", "");
-  } else if ($("#ra-outcome").textContent.startsWith("Add your key")) {
-    setOutcome($("#ra-outcome"), "", "");
-  }
-}
-
-const RA_TOPICS = [
-  "why an AI agent shouldn't hold a long-lived API key",
-  "why every AI agent needs a spending limit",
-  "what a prompt injection is",
-  "why logs of AI actions must be tamper-proof",
-  "why a kill switch matters for AI agents",
-  "why secrets should be encrypted before they are stored",
-  "what least privilege means for an AI agent",
-  "why an AI agent's access should expire",
-];
-
 function smallMoney(n) {
   return n > 0 && n < 0.01 ? `$${n.toFixed(5)}` : money(n);
 }
-
-let raJti = null;
-$("#ra-upstream").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
-$("#ra-start").addEventListener("click", async () => {
-  const choice = realAgentChoices().find((c) => c.value === $("#ra-upstream").value);
-  if (!choice) return;
-  const maxCalls = Math.max(1, Math.min(20, Number($("#ra-calls").value) || 5));
-  const budget = 0.05;
-  const list = $("#ra-replies");
-  list.innerHTML = "";
-  $("#ra-start").disabled = true;
-  setOutcome($("#ra-outcome"), "Issuing a token…", "");
-  let issued;
-  try {
-    issued = await api("/tokens", {
-      method: "POST",
-      body: JSON.stringify({ agent: "real-agent", upstream: choice.value, ttl_minutes: 5, max_calls: maxCalls, budget_usd: budget }),
-    });
-  } catch (err) {
-    setOutcome($("#ra-outcome"), esc(err.message), "bad");
-    $("#ra-start").disabled = false;
-    return;
-  }
-  raJti = issued.claims.jti;
-  $("#ra-revoke").disabled = false;
-  setOutcome($("#ra-outcome"), `Running against the real AI with a token for ${maxCalls} calls. It will keep going until Leash stops it.`, "");
-
-  let calls = 0;
-  let spent = 0;
-  for (;;) {
-    const topic = RA_TOPICS[calls % RA_TOPICS.length];
-    const r = await agentCall(issued.token, `You are an AI agent working through a task. In one short sentence, explain ${topic}.`, {
-      model: choice.model,
-      extra: { max_tokens: 60 },
-    });
-    const li = document.createElement("li");
-    if (!r.ok) {
-      const code = r.data?.error?.code || "BLOCKED";
-      if (code === "UPSTREAM_ERROR") {
-        setOutcome($("#ra-outcome"), `<strong>The AI provider returned an error.</strong> ${esc(r.data?.error?.message || "")}`, "bad");
-        break;
-      }
-      const text = BLOCK_TEXT[code] || r.data?.error?.message || "Blocked.";
-      li.className = "ra-stop";
-      li.innerHTML = `<span class="ra-n">Stopped</span><span>${esc(text)}</span>`;
-      list.appendChild(li);
-      setOutcome(
-        $("#ra-outcome"),
-        `<strong>${calls} real AI ${calls === 1 ? "call" : "calls"}, then Leash cut it off.</strong> Real cost: ${smallMoney(spent)}. The agent never saw the real key.`,
-        "good"
-      );
-      break;
-    }
-    calls += 1;
-    spent = Math.max(0, budget - Number(r.budgetRemaining || budget));
-    const reply = r.data.choices?.[0]?.message?.content || "(empty reply)";
-    li.innerHTML = `<span class="ra-n">Call ${calls}</span><span>${esc(reply)}</span>`;
-    list.appendChild(li);
-    await sleep(700);
-  }
-  $("#ra-revoke").disabled = true;
-  $("#ra-start").disabled = false;
-  refresh();
-});
-
-$("#ra-revoke").addEventListener("click", async () => {
-  if (!raJti) return;
-  $("#ra-revoke").disabled = true;
-  await api(`/tokens/${encodeURIComponent(raJti)}/revoke`, { method: "POST", body: JSON.stringify({ reason: "Stopped during the real agent demo" }) });
-});
-
-function hostOf(url) {
-  try { return new URL(url).host; } catch { return url; }
-}
-
-function renderKeys() {
-  const ul = $("#keys");
-  ul.querySelectorAll("details[open]").forEach((d) => openDetails.add(d.closest(".key").dataset.id));
-  if (!storedKeys.length) {
-    ul.innerHTML = '<li class="empty">No keys stored yet. Add one to see what the database keeps.</li>';
-    return;
-  }
-  ul.innerHTML = storedKeys
-    .map((k) => {
-      const tampered = k.status === "tampered";
-      const result = keyResults.get(k.id) || (tampered
-        ? { html: "<strong>Tampered.</strong> This key was changed in the database, so Leash won't use it. Remove it, then add the key again.", tone: "bad" }
-        : null);
-      const via = MODE === "sandbox" ? "the fake AI (sandbox)" : esc(hostOf(k.base_url));
-      return `<li class="key${tampered ? " tampered" : ""}" data-id="${esc(k.id)}">
-        <div class="key-top">
-          <span class="key-name">${esc(k.name)}</span>
-          <span class="pill ${tampered ? "pill-stopped" : "pill-active"}">${tampered ? "tampered" : "encrypted"}</span>
-        </div>
-        <div class="key-meta">Model <code>${esc(k.model)}</code>, key <code>${esc(k.key_hint)}</code>, calls go to ${via}</div>
-        <details${openDetails.has(k.id) ? " open" : ""}>
-          <summary>What the database stores</summary>
-          <dl class="stored">
-            <dt>Your API key</dt><dd class="plain">Not saved. Only the scrambled version below.</dd>
-            <dt>Scrambled key</dt><dd>${esc(k.stored.ciphertext)}</dd>
-            <dt>Its lock</dt><dd>${esc(k.stored.wrapped_data_key)}</dd>
-            <dt>Unlocked by</dt><dd class="plain">A master key kept on the server, never in the database</dd>
-          </dl>
-        </details>
-        <div class="key-actions">
-          ${tampered ? "" : `<button class="btn btn-primary" data-action="test">Test this key</button>
-          <button class="btn btn-danger" data-action="tamper">Tamper with it</button>`}
-          <button class="btn ${tampered ? "btn-primary" : "btn-quiet"}" data-action="remove">Remove</button>
-        </div>
-        <p class="key-result${result ? " " + result.tone : ""}" aria-live="polite">${result ? result.html : ""}</p>
-      </li>`;
-    })
-    .join("");
-}
-
-let keyNoteTimer = null;
-function showKeyNote(text) {
-  $("#key-note").textContent = text;
-  clearTimeout(keyNoteTimer);
-  keyNoteTimer = setTimeout(() => { $("#key-note").textContent = ""; }, 8000);
-}
-
-function setKeyResult(id, html, tone) {
-  keyResults.set(id, { html, tone });
-  const el = document.querySelector(`.key[data-id="${CSS.escape(id)}"] .key-result`);
-  if (el) {
-    el.innerHTML = html;
-    el.className = "key-result " + tone;
-  }
-}
-
-$("#key-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const f = new FormData(form);
-  $("#key-error").textContent = "";
-  try {
-    await api("/connections", {
-      method: "POST",
-      body: JSON.stringify({ name: f.get("name"), base_url: f.get("base_url"), model: f.get("model"), api_key: f.get("api_key") }),
-    });
-    form.elements.api_key.value = ""; // don't keep the key in the page any longer than needed
-    await loadKeys();
-    refresh();
-  } catch (err) {
-    if (err.message !== "unauthorized") $("#key-error").textContent = err.message;
-  }
-});
-
-$("#keys").addEventListener("click", async (e) => {
-  const btn = e.target.closest("button[data-action]");
-  if (!btn) return;
-  const id = btn.closest(".key").dataset.id;
-  const action = btn.dataset.action;
-  btn.disabled = true;
-  try {
-    if (action === "test") {
-      setKeyResult(id, "Unlocking the key and sending one test message…", "");
-      const r = await api(`/connections/${encodeURIComponent(id)}/test`, { method: "POST" });
-      if (r.ok) {
-        const who = r.fake ? "The fake AI" : "The provider";
-        setKeyResult(id, `<strong>It works.</strong> The key was unlocked for one call, then locked again. ${who} replied: ${esc(r.reply)}`, "good");
-      } else if (r.code === "KEY_INTEGRITY_FAILED") {
-        setKeyResult(id, `<strong>Blocked.</strong> Leash noticed the saved key had been changed and refused to use it. No call was made, and an alert fired.`, "good");
-      } else {
-        setKeyResult(id, `<strong>That didn't work.</strong> ${esc(r.reply)}`, "bad");
-      }
-      await loadKeys();
-    } else if (action === "tamper") {
-      await api(`/demo/tamper-key/${encodeURIComponent(id)}`, { method: "POST" });
-      setKeyResult(id, "The saved key was changed directly in the database, as an attacker might do. Now test it.", "bad");
-      await loadKeys();
-    } else if (action === "remove") {
-      const r = await api(`/connections/${encodeURIComponent(id)}/remove`, { method: "POST" });
-      keyResults.delete(id);
-      openDetails.delete(id);
-      showKeyNote(`Deleted '${r.name || "the key"}' for good. Tokens that used it stop working right away.`);
-      await loadKeys();
-    }
-    refresh();
-  } catch (err) {
-    if (err.message !== "unauthorized") setKeyResult(id, esc(err.message), "bad");
-  }
-  btn.disabled = false;
-});
-
-// ---------------------------------------------------------------------------
-// One real OpenAI call
-// ---------------------------------------------------------------------------
-$("#real-btn").addEventListener("click", async () => {
-  const out = $("#real-out");
-  $("#real-btn").disabled = true;
-  setOutcome(out, "Issuing a small token and calling OpenAI…", "");
-  try {
-    const issued = await api("/tokens", {
-      method: "POST",
-      body: JSON.stringify({ agent: "real-call-demo", upstream: "openai", ttl_minutes: 5, max_calls: 3, budget_usd: 0.02 }),
-    });
-    const r = await agentCall(issued.token, "In one sentence: why should AI agents use short-lived, limited credentials?", { model: state.config.openai_model });
-    if (r.ok) {
-      const text = r.data.choices?.[0]?.message?.content || "(empty reply)";
-      setOutcome(out, `<strong>${esc(state.config.openai_model)} replied:</strong> ${esc(text)}`, "good");
-    } else {
-      setOutcome(out, `Blocked or failed: ${esc(r.data?.error?.message || r.status)}`, "bad");
-    }
-  } catch (err) {
-    setOutcome(out, esc(err.message), "bad");
-  }
-  $("#real-btn").disabled = false;
-  refresh();
-});
 
 // ---------------------------------------------------------------------------
 // The story: Maya's support inbox over a weekend, with Leash's checks lit up
@@ -970,23 +616,10 @@ const story = {
   model: "fake-model", maxCalls: 20, budget: 0.5, calls: 0, spent: 0,
 };
 
+// The public demo runs Maya's weekend on the free fake AI.
 function storyChoices() {
-  const choices = [{ value: "fake", model: "fake-model", label: "Free fake AI" }];
-  if (MODE === "operator") realAgentChoices().forEach((c) => choices.push(c));
-  return choices;
+  return [{ value: "fake", model: "fake-model", label: "Free fake AI" }];
 }
-
-function syncStoryOptions() {
-  if (MODE !== "operator") return;
-  const select = $("#st-ai");
-  const previous = select.value;
-  const choices = storyChoices();
-  select.innerHTML = choices.map((c) => `<option value="${esc(c.value)}">${esc(c.label)}</option>`).join("");
-  if (select.dataset.touched && choices.some((c) => c.value === previous)) select.value = previous;
-  else if (choices.length > 1) select.value = choices[1].value; // the control room prefers the real AI
-  state.run?.refreshChoices();
-}
-$("#st-ai").addEventListener("change", (e) => { e.target.dataset.touched = "1"; });
 
 function feed(html, cls = "") {
   const ol = $("#st-feed");
@@ -1091,9 +724,7 @@ function safeAlert(title, text) {
 
 function describeSafeKey(choice) {
   if (choice.value === "fake") return "This run uses the free fake AI. With Maya's real key, it would stay locked here and the assistant would never get it.";
-  if (choice.value === "openai") return "The server's own key, kept in its settings. The assistant never gets it.";
-  const k = storedKeys.find((x) => x.id === choice.value);
-  return `Your saved key${k ? " " + k.key_hint : ""}, encrypted. Leash unlocks it only for the moment of each approved call.`;
+  return "The server's own key, kept in its settings. The assistant never gets it.";
 }
 
 // One action by the assistant: sent through Leash, with the checks lit up.
@@ -1143,7 +774,7 @@ async function storyStart() {
   state.seenIds.clear();
   resetStoryUI();
   const choices = storyChoices();
-  const choice = (MODE === "operator" && choices.find((c) => c.value === $("#st-ai").value)) || choices[0];
+  const choice = choices[0];
   const real = choice.value !== "fake";
   Object.assign(story, { model: choice.model, maxCalls: real ? 8 : 20, budget: real ? 0.05 : 0.5, calls: 0, spent: 0 });
   const issued = await api("/tokens", {
@@ -1325,12 +956,6 @@ $("#st-stop").addEventListener("click", async () => {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-if (MODE === "sandbox") {
-  start().catch((err) => {
-    setOutcome($("#r-outcome"), esc(err.message), "bad");
-  });
-} else if (state.key) {
-  start().catch(() => signOut(""));
-} else {
-  $("#gate-pw").focus();
-}
+start().catch((err) => {
+  setOutcome($("#r-outcome"), esc(err.message), "bad");
+});

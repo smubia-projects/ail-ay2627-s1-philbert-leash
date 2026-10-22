@@ -1,0 +1,131 @@
+/* AI Lodge rate-limit CTA modal (429) and "demo paused" notice (503). See cta.js. */
+.rl-modal {
+  --rl-accent: #2b4c7e;
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.rl-modal.active { display: flex; }
+
+.rl-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 16, 28, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: rlFadeIn 0.5s ease;
+}
+
+.rl-card {
+  position: relative;
+  width: min(420px, 100%);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  animation: rlSlideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.rl-banner {
+  position: relative;
+  padding: 32px 24px 24px;
+  text-align: center;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--rl-accent), #2f7d5b);
+}
+.rl-circle { position: absolute; border-radius: 50%; background: #fff; opacity: 0.15; }
+.rl-circle-1 { width: 180px; height: 180px; top: -40px; right: -30px; }
+.rl-circle-2 { width: 120px; height: 120px; bottom: -20px; left: -20px; }
+.rl-emoji { position: relative; display: block; font-size: 3rem; margin-bottom: 12px; }
+.rl-headline { position: relative; margin: 0 0 8px; font-size: 1.4rem; font-weight: 700; color: #fff; }
+.rl-description { position: relative; margin: 0; font-size: 0.95rem; line-height: 1.5; color: rgba(255, 255, 255, 0.88); }
+
+.rl-body {
+  background: #141c2b;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rl-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 44px;
+  border-radius: 12px;
+  text-decoration: none;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.rl-btn:hover { transform: translateY(-2px); }
+.rl-btn:focus-visible, .rl-dismiss:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.rl-btn-primary {
+  background: linear-gradient(135deg, var(--rl-accent), #3d6aa8);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(43, 76, 126, 0.45);
+}
+.rl-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e4e9f2;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.rl-arrow { position: absolute; right: 18px; font-size: 1.1rem; }
+.rl-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 8px;
+  margin-top: 4px;
+}
+.rl-dismiss:hover { color: rgba(255, 255, 255, 0.8); }
+
+@keyframes rlFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rlSlideUp { from { opacity: 0; transform: translateY(16px) scale(0.95); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rl-backdrop, .rl-card { animation: none; }
+}
+
+/* 503: the operator paused the demo. Deliberately plain, not the CTA. */
+.paused-notice {
+  display: none;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1001;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff8e6;
+  color: #4a3a10;
+  border: 1px solid #e8c873;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.paused-notice.active { display: flex; }
+.paused-title { flex-basis: 100%; }
+.paused-text { flex: 1; margin: 0; line-height: 1.45; }
+.paused-close {
+  background: none;
+  border: 1px solid #c9a647;
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

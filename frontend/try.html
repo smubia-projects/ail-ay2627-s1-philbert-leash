@@ -2,38 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!--CSP-->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Leash Demo</title>
   <meta name="description" content="Short-lived, limited, revocable keys for AI agents, with a log nobody can quietly rewrite.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/cta.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='16' r='6' fill='none' stroke='%232b4c7e' stroke-width='3'/%3E%3Ccircle cx='22' cy='16' r='6' fill='none' stroke='%232f7d5b' stroke-width='3'/%3E%3C/svg%3E">
 </head>
-<body data-mode="operator">
-
-  <!-- Sign-in (control room only) -->
-  <div class="gate operator-only" id="gate">
-    <form class="gate-box" id="gate-form">
-      <h1 class="wordmark">Leash</h1>
-      <p>Enter the operator password to open the control room.</p>
-      <label for="gate-pw">Operator password</label>
-      <input id="gate-pw" type="password" autocomplete="current-password" required>
-      <p class="gate-error" id="gate-error" role="alert"></p>
-      <button type="submit" class="btn btn-primary">Open control room</button>
-    </form>
-  </div>
+<body data-mode="sandbox">
 
   <header class="top">
     <div class="top-inner">
       <div class="brand">
         <h1 class="wordmark"><a href="/" class="home-link">Leash</a></h1>
-        <p class="tagline operator-only">Control room. Budgets your AI agents can't overspend, and a record they can't fake.</p>
         <p class="tagline sandbox-only">Live demo. Your own private copy of Leash with a little real AI to spend, deleted after 3 hours.</p>
       </div>
       <div class="top-actions">
-        <a class="btn btn-quiet sandbox-only top-cta" href="/signup">Use Leash for your team</a>
+        <a class="btn btn-quiet top-cta" href="https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash" target="_blank" rel="noopener">Self-host Leash</a>
         <span class="upstream-badge" id="upstream-badge">Fake AI only</span>
         <button class="kill" id="kill-btn" aria-pressed="false">
           <span class="kill-dot" aria-hidden="true"></span>
@@ -55,8 +44,7 @@
       <button role="tab" data-tab="agent" data-label="Real agent"><span class="tab-n">1</span>Real agent</button>
       <button role="tab" data-tab="maya" data-label="Maya's weekend"><span class="tab-n">2</span>Maya's weekend</button>
       <button role="tab" data-tab="protections" data-label="Each protection"><span class="tab-n">3</span>Each protection</button>
-      <button role="tab" data-tab="key" data-label="Your key"><span class="tab-n">4</span>Your key</button>
-      <button role="tab" data-tab="log" data-label="Log and tools"><span class="tab-n">5</span>Log and tools</button>
+      <button role="tab" data-tab="log" data-label="Log and tools"><span class="tab-n">4</span>Log and tools</button>
     </div>
 
     <div class="tab-panel" data-panel="agent">
@@ -73,7 +61,6 @@
           <p class="story-sub">Maya runs a small online shop. This weekend an AI assistant answers her customer emails while she's away. It works with a Leash pass, never her real API key.</p>
         </div>
         <div class="story-controls">
-          <label class="operator-only">AI <select id="st-ai"></select></label>
           <button class="btn btn-primary" id="st-next">Start Maya's weekend</button>
           <button class="btn btn-quiet" id="st-restart" hidden>Start over</button>
         </div>
@@ -204,51 +191,7 @@
           </div>
         </li>
 
-        <li class="step step-wide operator-only" id="step-5">
-          <div class="step-head">
-            <span class="step-num">5</span>
-            <div>
-              <h3>A real AI agent on a leash</h3>
-            </div>
-          </div>
-          <div class="ra-controls">
-            <label>AI key <select id="ra-upstream"></select></label>
-            <label>Call limit <input id="ra-calls" type="number" min="1" max="20" value="5"></label>
-          </div>
-          <ol class="ra-replies" id="ra-replies"></ol>
-          <p class="outcome" id="ra-outcome"></p>
-          <div class="step-actions">
-            <button class="btn btn-primary" id="ra-start">Run real agent</button>
-            <button class="btn btn-danger" id="ra-revoke" disabled>Revoke this token</button>
-          </div>
-        </li>
       </ol>
-    </section>
-    <div data-tab-step></div>
-    </div>
-
-    <div class="tab-panel" data-panel="key" hidden>
-    <section class="byok" aria-labelledby="byok-title">
-      <div class="byok-intro">
-        <h2 id="byok-title">Bring your own key</h2>
-        <p>Add your own API key. Leash encrypts it before saving it and only unlocks it for the moment a call is made.</p>
-        <p class="byok-note sandbox-only">In this sandbox, keys are encrypted exactly the same way but calls still go to the free fake AI. Use a made-up key such as <code>sk-test-1234567890</code>, not a real one.</p>
-        <form class="issue" id="key-form" autocomplete="off">
-          <div class="issue-row two">
-            <label>Name <input name="name" value="Team key" maxlength="64" required></label>
-            <label>Model <input name="model" value="gpt-4o-mini" maxlength="100" required></label>
-          </div>
-          <label>Provider base URL <input name="base_url" value="https://api.openai.com/v1" maxlength="200" required></label>
-          <label>API key <input name="api_key" type="password" minlength="8" maxlength="300" required autocomplete="off" spellcheck="false"></label>
-          <p class="form-error" id="key-error" role="alert"></p>
-          <button class="btn btn-primary" type="submit">Encrypt and store key</button>
-        </form>
-      </div>
-      <div class="byok-list">
-        <h3>Stored keys</h3>
-        <ul class="keys" id="keys"><li class="empty">No keys stored yet.</li></ul>
-        <p class="key-note" id="key-note" role="status"></p>
-      </div>
     </section>
     <div data-tab-step></div>
     </div>
@@ -278,17 +221,6 @@
         <section aria-labelledby="alerts-title">
           <h2 id="alerts-title">Alerts</h2>
           <ul class="alerts" id="alerts"><li class="empty">Nothing suspicious yet.</li></ul>
-          <form class="hook-mini operator-only" id="hook-form" autocomplete="off">
-            <label>Also send alerts to Slack or Discord
-              <input name="url" type="url" maxlength="500" placeholder="https://hooks.slack.com/services/…">
-            </label>
-            <div class="hook-mini-actions">
-              <button class="btn" type="submit" id="hook-save">Save</button>
-              <button class="btn" type="button" id="hook-test" hidden>Send a test</button>
-              <button class="btn btn-quiet" type="button" id="hook-remove" hidden>Turn off</button>
-            </div>
-            <p class="hook-mini-msg" id="hook-msg" role="status"></p>
-          </form>
         </section>
 
         <section aria-labelledby="issue-title">
@@ -298,7 +230,6 @@
             <label>AI
               <select name="upstream" id="issue-upstream">
                 <option value="fake">Free fake AI</option>
-                <option value="openai">Server key (real AI)</option>
               </select>
             </label>
             <div class="issue-row">
@@ -316,13 +247,6 @@
           </div>
         </section>
 
-        <section aria-labelledby="real-title" id="real-section" class="operator-only" hidden>
-          <h2 id="real-title">One real OpenAI call</h2>
-          <p class="muted">Issues a 3-call, $0.02 token and sends one short prompt through Leash to <span id="real-model"></span>.</p>
-          <button class="btn btn-primary" id="real-btn">Make a real call</button>
-          <p class="outcome" id="real-out"></p>
-        </section>
-
         <section aria-labelledby="canary-title">
           <h2 id="canary-title">Planted trap keys</h2>
           <ul class="canaries" id="canaries"></ul>
@@ -337,12 +261,13 @@
     <p>Leash keeps your real key on the server, gives agents limited tokens, and records everything in a log that can't be secretly changed.</p>
     <div class="foot-links">
       <a href="/">About Leash</a>
-      <button class="btn btn-quiet operator-only" id="logout">Sign out</button>
     </div>
   </footer>
 
-  <script src="/static/tabs.js"></script>
-  <script src="/static/agentrun.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/config.js"></script>
+  <script src="/cta.js"></script>
+  <script src="/tabs.js"></script>
+  <script src="/agentrun.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
