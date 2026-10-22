@@ -81,8 +81,6 @@ OPENAI_ENABLED = bool(OPENAI_API_KEY and OPENAI_MODEL)
 # settled cost uses the `usage.cost` OpenRouter returns, falling back to these.
 PRICE_INPUT_PER_1M = _float("PRICE_INPUT_PER_1M", 0.15)
 PRICE_OUTPUT_PER_1M = _float("PRICE_OUTPUT_PER_1M", 0.60)
-# Hard ceiling on real AI spend across every token, ever (defence in depth).
-GLOBAL_REAL_BUDGET_USD = _float("GLOBAL_REAL_BUDGET_USD", 1.00)
 # Cap on output tokens per real call if the agent doesn't set one.
 DEFAULT_MAX_COMPLETION_TOKENS = int(_float("DEFAULT_MAX_COMPLETION_TOKENS", 300))
 
@@ -98,10 +96,10 @@ SANDBOX_MAX_AUDIT = 3000         # log entries per sandbox before it asks for a 
 SANDBOX_MAX_TOKENS = 60          # tokens per sandbox
 SANDBOX_MAX_TTL_MINUTES = 10
 SANDBOX_MAX_CALLS = 100
-SANDBOX_MAX_BUDGET_USD = 5.00    # cap per pass; real-AI passes are also capped by the budgets below
-# Real AI in the public demo, paid from the server's own key, with hard caps.
-PUBLIC_REAL_BUDGET_USD = _float("PUBLIC_REAL_BUDGET_USD", 0.20)          # all visitors together, ever
-SANDBOX_REAL_PER_VISITOR_USD = _float("SANDBOX_REAL_PER_VISITOR_USD", 0.01)  # each visitor's share
+SANDBOX_MAX_BUDGET_USD = 5.00    # cap per pass (pretend money on the fake AI)
+# Real AI in the public demo, paid from the server's own key. How much of it each visitor may use is the shared
+# AI Lodge rate limiter's job (bucket "agent_call", one per real call); these keep each call and pass small.
+SANDBOX_REAL_MAX_PASS_USD = _float("SANDBOX_REAL_MAX_PASS_USD", 0.01)  # largest budget a real-AI pass can carry
 SANDBOX_REAL_MAX_TOKENS = 150        # output cap per public real call
 SANDBOX_REAL_MAX_PROMPT_CHARS = 8000 # input cap per public real call
 

@@ -6,8 +6,9 @@ and its single LLM bucket; the engine handles X-Forwarded-For, central config,
 event mode, the kill switch (503), and fail-open behaviour.
 
 Bucket "agent": one real-AI agent run in the public demo (issuing a real-AI
-pass). Each run is still capped in dollars by the per-visitor, public and
-global budgets kept in Postgres.
+pass). Bucket "agent_call": every real model call the proxy forwards for the
+public demo. Together they are the demo's only cost control on real AI; each
+pass's own money limit is the product being demonstrated, not cost control.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ def _env_int(name: str, default: int) -> int:
 limiter = RateLimiter(
     # Slug = full project folder name (matches the central control sheet rows).
     project="ail-ay2627-s1-philbert-leash",
-    buckets={"agent": _env_int("RATE_LIMIT_AGENT_MAX", 5)},
+    buckets={"agent": _env_int("RATE_LIMIT_AGENT_MAX", 5), "agent_call": _env_int("RATE_LIMIT_AGENT_CALL_MAX", 40)},
     redis_url=os.getenv("UPSTASH_REDIS_REST_URL") or os.getenv("UPSTASH_REDIS_URL", ""),
     redis_token=os.getenv("UPSTASH_REDIS_REST_TOKEN") or os.getenv("UPSTASH_REDIS_TOKEN", ""),
     default_window=_env_int("RATE_LIMIT_WINDOW_SECONDS", 432000),

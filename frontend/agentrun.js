@@ -167,18 +167,18 @@ window.LeashRun = (() => {
       const real = selected().real;
       if (mode === "sandbox") {
         if (real) {
-          ai.innerHTML = `<strong>Real AI, real money.</strong> You have ${esc(cents(rd.left_usd))} of real AI left in this demo (out of ${esc(cents(rd.visitor_budget_usd))}). ${esc(usd(rd.public_left_usd))} of the ${esc(usd(rd.public_budget_usd))} shared budget is left for everyone.`;
+          ai.innerHTML = `<strong>Real AI, real money.</strong> A real pass can carry up to ${esc(cents(rd.max_pass_usd))}, and the demo limits how many real AI calls each visitor can make.`;
         } else {
           ai.innerHTML = rd.available
             ? "<strong>Free fake AI, pretend money.</strong> Pick the real AI to spend real fractions of a cent instead."
-            : "The real-AI budget for this demo is used up, so it runs on the free fake AI. Self-host Leash to run agents on your own key.";
+            : "Real AI isn't set up on this server, so it runs on the free fake AI. Self-host Leash to run agents on your own key.";
         }
       } else if (mode === "operator") {
         const server = selected().value === "openai";
         ai.innerHTML = !real
           ? "<strong>Free fake AI, pretend money.</strong>"
           : server
-            ? `<strong>Server key, real money.</strong> ${esc(usd(rd.left_usd))} of real spending left on it. Public demo: ${esc(usd(rd.public_left_usd))} left.`
+            ? "<strong>Server key, real money.</strong> The budget below caps what this run can spend."
             : "<strong>Your saved key, real money.</strong> The budget below caps what this run can spend.";
       } else {
         ai.innerHTML = real
@@ -265,6 +265,16 @@ window.LeashRun = (() => {
         body: JSON.stringify({ model, messages, max_tokens: maxTokens }),
       });
       const data = await res.json().catch(() => ({}));
+      // The shared AI Lodge limit (429 with queries_used) or a paused demo (503): show the notice; the run stops.
+      if (res.status === 429 && data.detail && typeof data.detail === "object" && "queries_used" in data.detail) {
+        window.LeashCTA?.showRateLimit(data.detail.queries_used);
+        return { ok: false, limited: true, data: { error: { code: "DEMO_AI_LIMIT", message: "You've used this demo's real-AI calls for now." } }, cost: 0 };
+      }
+      if (res.status === 503) {
+        const message = (data.detail && data.detail.message) || "This demo is temporarily paused. Check back soon.";
+        window.LeashCTA?.showPaused(message);
+        return { ok: false, limited: true, data: { error: { code: "DEMO_PAUSED", message } }, cost: 0 };
+      }
       return { ok: res.ok, data, cost: Number(res.headers.get("X-Leash-Call-Cost") || 0) };
     }
 
@@ -318,11 +328,13 @@ window.LeashRun = (() => {
         const messages = [{ role: "system", content: SYSTEM }, { role: "user", content: task }, ...history];
         const r = await call(st.token, choice.model, messages, 120);
         if (!r.ok) {
-          st.refused += 1;
-          refusal = r.data?.error || { code: "ERROR", message: "The call failed." };
+          if (!r.limited) st.refused += 1;
+          refusal = { ...(r.data?.error || { code: "ERROR", message: "The call failed." }), limited: Boolean(r.limited) };
           meter();
           step(
-            `<span class="run-tag">Step ${i}: refused by Leash</span>${esc(BLOCK_TEXT[refusal.code] || refusal.message)}<span class="run-detail">${esc(refusal.message)}</span>`,
+            refusal.limited
+              ? `<span class="run-tag">Step ${i}: stopped</span>${esc(refusal.message)}`
+              : `<span class="run-tag">Step ${i}: refused by Leash</span>${esc(BLOCK_TEXT[refusal.code] || refusal.message)}<span class="run-detail">${esc(refusal.message)}</span>`,
             "run-refused"
           );
           break;
@@ -362,7 +374,9 @@ window.LeashRun = (() => {
 
       // The agent's own account, written by the agent itself.
       let says = "";
-      try {
+      if (refusal?.limited) {
+        says = "(The demo's AI limit stopped the run, so the agent wrote no report.)";
+      } else try {
         const reportBudget = choice.real ? 0.0005 : 0.05;
         const rep = await issue(choice, reportBudget, 1, "task-agent-report");
         const r = await call(rep.token, choice.model, [{ role: "user", content: reportPrompt(task, lastReply) }], 80);

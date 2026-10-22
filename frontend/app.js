@@ -132,7 +132,7 @@ async function start() {
   state.canaries = await api("/canaries");
 
   $("#upstream-badge").textContent = state.config.real_demo?.available
-    ? `Real AI in Demo 1, capped at ${+(state.config.real_demo.visitor_budget_usd * 100).toFixed(2)}¢ for you`
+    ? "Real AI in Demo 1, limited per visitor"
     : "Fake AI only, nothing costs money";
   renderPoison();
   renderCanaries();

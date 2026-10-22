@@ -29,7 +29,7 @@ On `/try` (the first tab), anyone can give a real AI agent (gpt-4o-mini) a task 
 
 ![A real agent stopped at its budget](docs/screenshots/17-agent-run.png)
 
-The exact instructions given to the agent are shown on the page. Spending by the public demo is capped: **$0.20 in total for all visitors and 1 cent per visitor**, at most 150 output tokens and 8,000 characters per call, and per-address rate limits. When the shared budget runs out, the demo switches to the free fake AI. These totals are kept as running counters that survive demo resets, so deleting passes can't reopen the caps.
+The exact instructions given to the agent are shown on the page. Real AI in the public demo is kept small: a real pass carries at most 1 cent, each call at most 150 output tokens and 8,000 characters, and the shared AI Lodge rate limiter counts every real call per visitor. Past that limit the run stops and the AI Lodge invitation opens.
 
 ## Demo 2: Maya's weekend (attacks)
 
@@ -86,7 +86,7 @@ Agent ──(Leash token)──▶ Leash ──(real OpenAI key)──▶ OpenAI
 | Protection | How it works |
 |---|---|
 | **Scoped tokens** | `lsh_<claims>.<HMAC-SHA256 signature>`. Claims hold agent name, expiry, max calls and budget. Changing one character breaks the signature. Compared in constant time. |
-| **Budgets that hold** | Every call is reserved before forwarding using a worst-case cost estimate, then settled using OpenAI's `usage` numbers. A server-wide ceiling caps total real spend. |
+| **Budgets that hold** | Every call is reserved before forwarding using a worst-case cost estimate, then settled using OpenAI's `usage` numbers. |
 | **Kill switch** | Revoke one token, or stop every agent at once. Takes effect on the agent's next call. |
 | **Tamper-evident log** | Each entry's seal is `HMAC-SHA256(key, previous_seal ‖ entry)`. Editing or deleting any entry breaks the chain at that exact point. Keyed hashing means someone with only database access can't recompute the chain. |
 | **Canary keys** | Decoy keys that look exactly like OpenAI keys are planted where only an injected agent would find them. Any use fires an alert. |
@@ -191,9 +191,9 @@ python examples/agent.py http://localhost:8787 lsh_...
 - **Single instance.** The workflow pins `--max-instances=1` (the club default is 2) and the container runs one uvicorn worker: budgets and audit chains are written under an in-process lock. State lives in Postgres, so scaling to zero is fine.
 - **Database → Neon.** Set `DATABASE_URL` to the Neon connection string with `?sslmode=require`. Tables are created at startup (`CREATE TABLE IF NOT EXISTS`), so an empty database is all it needs.
 - **Frontend → Vercel.** Root directory `frontend`, build command `npm run build`, output `dist` (both in `frontend/vercel.json`). Set `VITE_API_BASE` to the Cloud Run URL. `build.js` writes `config.js` and a Content-Security-Policy whose `connect-src` allows that origin only. The site is `https://ail-ay2627-s1-philbert-leash.vercel.app`, which goes in the backend's `CORS_ORIGINS`.
-- **Rate limit.** Starting a real-AI agent run (issuing a real-AI pass) uses the shared AI Lodge rate limiter, bucket `agent` (`RATE_LIMIT_AGENT_MAX`, default 5 per `RATE_LIMIT_WINDOW_SECONDS`, default 5 days, per IP). Over the limit the page shows the AI Lodge modal and the real-AI run stops (it does not switch to the free fake AI); a paused demo (503) shows a notice and stops the run too. Spend is capped separately by the dollar budgets below.
+- **Rate limit.** Real AI in the public demo is limited only by the shared AI Lodge rate limiter, per IP: bucket `agent` counts each real-AI agent run (issuing a real-AI pass; `RATE_LIMIT_AGENT_MAX`, default 5) and bucket `agent_call` counts each real model call the proxy forwards (`RATE_LIMIT_AGENT_CALL_MAX`, default 40), both per `RATE_LIMIT_WINDOW_SECONDS` (default 5 days). A call Leash itself refuses (over its pass budget, for example) is not counted. Over the limit the page shows the AI Lodge modal and the real-AI run stops (it does not switch to the free fake AI); a paused demo (503) shows a notice and stops the run too. Each pass's own money limit is the product being demonstrated, not cost control.
 
-**Before demoing with a real key:** set a credit limit on the OpenRouter key as well. `GLOBAL_REAL_BUDGET_USD` (default $1.00) is Leash's own ceiling on real spend.
+**Before demoing with a real key:** set a credit limit on the OpenRouter key as well.
 
 ## Environment variables
 
@@ -207,9 +207,8 @@ Backend (see `.env.example`):
 | `API_KEY` | no | Enables real AI through OpenRouter. Without it the demo is fake-AI only. |
 | `MODEL_NAME` | no | The only model real-AI passes may use. Default `openai/gpt-4o-mini`. |
 | `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | The model's prices in USD per 1M tokens, used for the worst-case estimate before each call (the settled cost uses OpenRouter's reported `usage.cost`). Defaults 0.15 / 0.60 match `openai/gpt-4o-mini`. |
-| `GLOBAL_REAL_BUDGET_USD` | no | Ceiling on all real spend, ever. Default 1.00. |
-| `PUBLIC_REAL_BUDGET_USD` | no | Real-AI spending the public demo may use in total. Default 0.20. |
-| `SANDBOX_REAL_PER_VISITOR_USD` | no | Each visitor's share of that. Default 0.01. |
+| `SANDBOX_REAL_MAX_PASS_USD` | no | Largest money limit a real-AI pass in the public demo can carry. Default 0.01. |
+| `RATE_LIMIT_AGENT_MAX`, `RATE_LIMIT_AGENT_CALL_MAX` | no | Fallback per-IP limits for real-AI runs and real calls when the central control sheet has no row. Defaults 5 and 40. |
 | `DEFAULT_MAX_COMPLETION_TOKENS` | no | Output cap per real call if the agent sets none. Default 300. |
 | `SANDBOX_ENABLED` | no | Set to `false` to turn off the public sandbox. Default on. |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | yes in production | Shared AI Lodge rate limiter. Without them, run limits are off (fine locally). |
@@ -236,7 +235,7 @@ Every `/api/sb/*` call except `session` needs the `X-Leash-Session` header with 
 
 ## Abuse protection on the public pages
 
-- Real AI in the public demo is capped: $0.20 in total and 1 cent per visitor (both configurable), at most 150 output tokens and 8,000 characters per call. The caps are running totals in the database that survive demo resets. When they run out, `/try` uses the free fake AI.
+- Real AI in the public demo is kept small: at most 1 cent per real pass, 150 output tokens and 8,000 characters per call, and the shared rate limiter's per-visitor counts of runs and calls. Past the limit the run stops with the AI Lodge invitation.
 - Real agent runs per IP are limited by the shared AI Lodge rate limiter (bucket `agent`), which also has an operator kill switch.
 - Sandbox limits are clamped: 10 minutes, 100 calls and $5 per pass, 60 passes and 3,000 log entries per sandbox, 300 sandboxes at once.
 - In-memory per-IP limits on the free paths (proxy, sandbox API, new sandboxes, unprotected demo path) stop floods.

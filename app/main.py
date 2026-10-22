@@ -123,38 +123,14 @@ def _usd(amount: float) -> str:
     return f"${amount:.2f}" if amount >= 0.01 or amount == 0 else f"${amount:.5f}"
 
 
-# Real-AI spending through the server's own key, kept as running totals in the
-# settings table. Unlike the passes, these survive a demo reset, so the caps
-# below can't be reopened by deleting passes.
-GLOBAL = "global"
-
-
-def _spent(conn, space: str, name: str = "real_spent_usd") -> float:
-    try:
-        return float(db.get_setting(conn, space, name, "0") or 0)
-    except ValueError:
-        return 0.0
-
-
-def _bump(conn, space: str, delta: float, name: str = "real_spent_usd") -> None:
-    db.set_setting(conn, space, name, f"{max(0.0, _spent(conn, space, name) + delta):.8f}")
-
-
 def _real_demo(conn, space: str) -> dict:
-    """What's left of the real-AI budgets, as seen from a sandbox."""
+    """Whether a sandbox can run on real AI. How much each visitor may use is the shared rate limiter's job."""
     if not is_sandbox(space):
         return {"available": False}
-    global_left = max(0.0, config.GLOBAL_REAL_BUDGET_USD - _spent(conn, GLOBAL))
-    public_left = max(0.0, config.PUBLIC_REAL_BUDGET_USD - _spent(conn, GLOBAL, "public_real_spent_usd"))
-    visitor_left = max(0.0, config.SANDBOX_REAL_PER_VISITOR_USD - _spent(conn, space))
-    left = min(global_left, public_left, visitor_left)
     return {
-        "available": config.OPENAI_ENABLED and left >= 0.0005,
+        "available": config.OPENAI_ENABLED,
         "model": config.OPENAI_MODEL or None,
-        "left_usd": round(left, 6),
-        "public_left_usd": round(min(public_left, global_left), 6),
-        "public_budget_usd": config.PUBLIC_REAL_BUDGET_USD,
-        "visitor_budget_usd": config.SANDBOX_REAL_PER_VISITOR_USD,
+        "max_pass_usd": config.SANDBOX_REAL_MAX_PASS_USD,
     }
 
 
@@ -188,7 +164,7 @@ async def proxy_chat_completions(request: Request):
     except (json.JSONDecodeError, ValueError):
         body = None
     # Database work and the upstream call are blocking, so run them off the event loop.
-    return await run_in_threadpool(_handle_proxy, presented, body, ip)
+    return await run_in_threadpool(_handle_proxy, presented, body, ip, request)
 
 
 def _log_unattributed(conn, ip: str, event: str, detail: dict) -> None:
@@ -198,7 +174,7 @@ def _log_unattributed(conn, ip: str, event: str, detail: dict) -> None:
         audit.append(conn, db.MAIN, event, detail)
 
 
-def _handle_proxy(presented: str, body, ip: str):
+def _handle_proxy(presented: str, body, ip: str, request: Request):
     if not presented:
         return _blocked(401, "NO_TOKEN", "Send a Leash token as 'Authorization: Bearer lsh_...'.")
     fingerprint = hashlib.sha256(presented.encode()).hexdigest()
@@ -309,35 +285,30 @@ def _handle_proxy(presented: str, body, ip: str):
                 {"spent_usd": round(row.spent_usd, 8), "budget_usd": row.budget_usd, "next_call_up_to_usd": round(estimate, 8)},
             )
 
-        # Running totals to reserve this call against, besides the pass itself.
-        counters = []
-        if upstream_name == "openai":
-            if _spent(conn, GLOBAL) + estimate > config.GLOBAL_REAL_BUDGET_USD:
-                _alert(conn, db.MAIN, "GLOBAL_BUDGET", "The server-wide real-AI budget is used up. Real calls are paused.")
-                return block(402, "GLOBAL_BUDGET", "The server-wide spending ceiling for real API calls has been reached.")
-            if _spent(conn, GLOBAL, "public_real_spent_usd") + estimate > config.PUBLIC_REAL_BUDGET_USD:
-                return block(402, "PUBLIC_BUDGET", "The public demo's real-AI budget is used up. The demo will use the free fake AI.")
-            if _spent(conn, space) + estimate > config.SANDBOX_REAL_PER_VISITOR_USD:
-                return block(
-                    402,
-                    "VISITOR_BUDGET",
-                    f"You've used your {_usd(config.SANDBOX_REAL_PER_VISITOR_USD)} of real AI in this demo. Self-host Leash to run agents on your own key.",
-                )
-            counters = [(GLOBAL, "real_spent_usd"), (GLOBAL, "public_real_spent_usd"), (space, "real_spent_usd")]
-            for counter_space, name in counters:
-                _bump(conn, counter_space, estimate, name)
-
         conn.execute(
             db.tokens.update().where(db.tokens.c.jti == jti).values(calls_used=row.calls_used + 1, spent_usd=row.spent_usd + estimate)
         )
+
+    # 4b. A real call counts against the shared AI Lodge limit, only once Leash's own checks have let it through.
+    # Over the limit (429) or with the demo paused (503) the reservation is undone and the run stops.
+    if kind == "real":
+        try:
+            check_rate_limit(request, "agent_call")
+        except HTTPException as limited:
+            with db.write_lock, db.engine.begin() as conn:
+                current = conn.execute(select(db.tokens).where(db.tokens.c.jti == jti)).first()
+                if current is not None:
+                    conn.execute(db.tokens.update().where(db.tokens.c.jti == jti).values(
+                        calls_used=max(0, current.calls_used - 1), spent_usd=max(0.0, current.spent_usd - estimate)))
+                    audit.append(conn, space, "CALL_BLOCKED", {"agent": claims["agent"], "code": "DEMO_AI_LIMIT",
+                                 "reason": "The public demo's AI limit for this visitor was reached."}, jti=jti)
+            raise limited
 
     # 5. Forward. The lock is released so a slow upstream can't freeze the dashboard.
     try:
         result = upstream.openai_completion(body) if kind == "real" else upstream.fake_completion(body)
     except upstream.UpstreamError as err:
         with db.write_lock, db.engine.begin() as conn:
-            for counter_space, name in counters:
-                _bump(conn, counter_space, -estimate, name)
             current = conn.execute(select(db.tokens).where(db.tokens.c.jti == jti)).first()
             if current is not None:
                 conn.execute(db.tokens.update().where(db.tokens.c.jti == jti).values(spent_usd=max(0.0, current.spent_usd - estimate)))
@@ -348,8 +319,6 @@ def _handle_proxy(presented: str, body, ip: str):
     usage = result.get("usage") or {}
     actual = upstream.cost_of(kind, usage)
     with db.write_lock, db.engine.begin() as conn:
-        for counter_space, name in counters:
-            _bump(conn, counter_space, actual - estimate, name)
         current = conn.execute(select(db.tokens).where(db.tokens.c.jti == jti)).first()
         if current is None:  # the sandbox was reset mid-call
             return JSONResponse(result)
@@ -426,7 +395,6 @@ def op_config(space: str) -> dict:
         "real_demo": real_demo,
         "mode": "sandbox",
         "fake_cost_per_call": config.FAKE_COST_PER_CALL,
-        "global_real_budget_usd": config.GLOBAL_REAL_BUDGET_USD,
         "limits": {
             "max_ttl_minutes": config.SANDBOX_MAX_TTL_MINUTES,
             "max_calls": config.SANDBOX_MAX_CALLS,
@@ -437,7 +405,7 @@ def op_config(space: str) -> dict:
 
 def op_issue(space: str, req: IssueRequest) -> dict:
     if req.upstream == "openai" and not config.OPENAI_ENABLED:
-        raise HTTPException(400, "The server's own key isn't available here. Use the free fake AI.")
+        raise HTTPException(400, "Real AI isn't configured on this server. Use the free fake AI.")
     ttl = min(req.ttl_minutes, config.SANDBOX_MAX_TTL_MINUTES)
     max_calls = min(req.max_calls, config.SANDBOX_MAX_CALLS)
     if req.upstream == "openai" and req.agent == REPORT_AGENT:
@@ -445,10 +413,9 @@ def op_issue(space: str, req: IssueRequest) -> dict:
     budget = min(req.budget_usd, config.SANDBOX_MAX_BUDGET_USD)
     with db.write_lock, db.engine.begin() as conn:
         if req.upstream == "openai":
-            real = _real_demo(conn, space)
-            if not real["available"]:
-                raise HTTPException(409, "The real-AI budget for this demo is used up. Use the free fake AI instead.")
-            budget = min(budget, real["left_usd"])
+            if not _real_demo(conn, space)["available"]:
+                raise HTTPException(400, "Real AI is only available in the public demo.")
+            budget = min(budget, config.SANDBOX_REAL_MAX_PASS_USD)
         t = db.tokens.c
         existing = conn.execute(select(func.count()).select_from(db.tokens).where(t.space == space)).scalar()
         if existing >= config.SANDBOX_MAX_TOKENS:
