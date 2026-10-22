@@ -30,6 +30,7 @@ from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
 
 from . import audit, config, db, guards, tokens, upstream
+from .rate_limit import check_rate_limit
 from .ratelimit import client_ip, limiter
 
 logging.basicConfig(level=logging.INFO)
@@ -763,7 +764,14 @@ def _config(space: str = Depends(sandbox_space)):
 
 
 @sandbox_router.post("/tokens")
-def _issue(req: IssueRequest, space: str = Depends(sandbox_space)):
+def _issue(req: IssueRequest, request: Request, space: str = Depends(sandbox_space)):
+    # A real-AI pass starts a real agent run: that is the rate-limited LLM action.
+    # Free fake-AI passes and the run's one-call status-report pass don't count.
+    if req.upstream == "openai" and req.agent != REPORT_AGENT:
+        with db.engine.connect() as conn:
+            available = _real_demo(conn, space)["available"]
+        if available:  # don't spend a run on a pass that would be refused anyway
+            check_rate_limit(request, "agent")
     return op_issue(space, req)
 
 

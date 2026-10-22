@@ -3,3 +3,4 @@ uvicorn[standard]==0.53.0
 httpx==0.28.1
 SQLAlchemy==2.1.4
 psycopg2-binary==2.9.13
+upstash-redis==1.8.0
