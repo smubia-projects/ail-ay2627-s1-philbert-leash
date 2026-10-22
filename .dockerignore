@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+*.db
+__pycache__/
+*.pyc
+.venv/
+venv/
+frontend/
+docs/
+examples/
+tests/
+*.md
+render.yaml
