@@ -115,9 +115,9 @@ CORS_ORIGINS = [
 ]
 
 # --- Database -----------------------------------------------------------------
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./leash.db")
-# Render gives a plain postgres:// or postgresql:// URL. Name the driver we
-# install (psycopg2) explicitly, since newer SQLAlchemy defaults to another one.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip() or "sqlite:///./leash.db"
+# Neon gives a plain postgresql:// URL (keep ?sslmode=require on it). Name the driver
+# we install (psycopg2) explicitly, since newer SQLAlchemy defaults to another one.
 for _prefix in ("postgres://", "postgresql://"):
     if DATABASE_URL.startswith(_prefix):
         DATABASE_URL = "postgresql+psycopg2://" + DATABASE_URL[len(_prefix):]
