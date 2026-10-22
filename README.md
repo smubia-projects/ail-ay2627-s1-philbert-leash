@@ -2,7 +2,7 @@
 
 **A budget your AI agent can't overspend, and a record it can't fake.** Each agent gets an HMAC-signed pass with a hard money limit instead of your API key. The key stays encrypted with AES-256-GCM where the agent can't reach it, and every call is sealed into an HMAC-chained record that catches any edit.
 
-Hackathon track: *Safety by Design*. Live at **https://leash-jy30.onrender.com**: [watch a real agent hit its limit](https://leash-jy30.onrender.com/try), or [create a free workspace](https://leash-jy30.onrender.com/signup).
+Hackathon track: *Safety by Design*. Hosted by SMU BIA AI Lodge at **https://ail-ay2627-s1-philbert-leash.vercel.app**: [watch a real agent hit its limit](https://ail-ay2627-s1-philbert-leash.vercel.app/try).
 
 ![Leash](docs/screenshots/00-cover.png)
 
@@ -42,6 +42,8 @@ Maya runs a small online shop. On Friday she lets an AI assistant answer custome
 The "admin key" in the email is a trap key Leash planted, the reply carrying it is blocked before it leaves, the loop stops at the limit, Maya gets a Slack message, and the record proves what happened.
 
 ## Leash as a service
+
+> Part of the original hackathon build, not of the hosted AI Lodge demo (see [The pages](#the-pages)).
 
 Teams sign up at `/signup` and get a private workspace at `/app`:
 
@@ -137,132 +139,132 @@ client = OpenAI(base_url="https://<your-app>.onrender.com/v1", api_key="lsh_..."
 
 ## The pages
 
-| Page | Who | What |
-|---|---|---|
-| `/` | everyone | Landing page in six tabs with Back and Next: why Leash exists, how it works, the seven checks, security, attacks (Maya's weekend), and who it's for with plans. |
-| `/try` | everyone | Public demo in five tabs with Back and Next: a real agent with a budget (real AI within the caps above), Maya's weekend, each protection on its own, your key (encrypted), and the log and tools. Each visitor gets an isolated copy. Rate-limited, and deleted after 3 hours. |
-| `/signup`, `/login` | everyone | Create a team account or log in. |
-| `/app` | customers | A team's private workspace: keys, agents, Slack or Discord alerts, trap keys, activity log. Real calls go through the team's own saved keys. |
-| `/control` | you | The password-protected control room. Same dashboard as `/try`, plus real calls through the server's key or your stored keys, and Slack or Discord alerts. |
+The pages are a static site in `frontend/`, deployed on Vercel. They call the API on Cloud Run.
+
+| Page | What |
+|---|---|
+| `/` | Landing page in six tabs with Back and Next: why Leash exists, how it works, the seven checks, security, attacks (Maya's weekend), and who it's for. |
+| `/try` | Public demo in four tabs with Back and Next: a real agent with a budget (real AI within the caps below), Maya's weekend, each protection on its own, and the log and tools. Each visitor gets an isolated copy, deleted after 3 hours. |
+
+This deployment is the public demo only. The original hackathon build also had sign-up and team workspaces (`/signup`, `/app`), bring-your-own-key storage, Slack and Discord alerts, and a password-protected operator control room (`/control`). Those are not part of the AI Lodge deployment, because the hosting club shouldn't hold other people's provider keys or webhooks; the sections above describe the design.
 
 ## Demo script (about 3 minutes)
 
 1. **The story (20 seconds).** Open the landing page and read the "Why we built Leash" section: $100 budget, $5,000 bill, logs that said all was fine.
-2. **Demo 1 (90 seconds).** On `/try` or `/control`, pick a task, keep the budget at $0.001, press **Start the agent**. Point at the money meter filling up and the agent's "Next:" plans. When it's refused: "It wanted to keep going. In the story it went to $5,000; here it can't go over a tenth of a cent." Read the agent's own report next to Leash's record, then press **Try to fake the record** and show the entry that was caught.
-3. **Demo 2 (optional, 60 seconds).** Run Maya's weekend for prompt injection: the trap key and the blocked leak. With a Slack webhook saved in `/control`, the alerts arrive live.
-4. **The service (40 seconds).** Sign up, save a key, run the same test agent on your own key, create a pass for a real agent and show the two-line code change.
+2. **Demo 1 (90 seconds).** On `/try`, pick a task, keep the budget at $0.001, press **Start the agent**. Point at the money meter filling up and the agent's "Next:" plans. When it's refused: "It wanted to keep going. In the story it went to $5,000; here it can't go over a tenth of a cent." Read the agent's own report next to Leash's record, then press **Try to fake the record** and show the entry that was caught.
+3. **Demo 2 (optional, 60 seconds).** Run Maya's weekend for prompt injection: the trap key and the blocked leak.
 
 ## Run it locally
+
+Backend (FastAPI, SQLite by default):
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env               # then fill in SIGNING_SECRET and ADMIN_PASSWORD
-uvicorn app.main:app --reload
+cp .env.example .env               # fill in SIGNING_SECRET; OPENROUTER_API_KEY is optional
+uvicorn app.main:app --port 8787 --reload
+curl http://localhost:8787/api/health   # {"status":"ok"}
 ```
 
-Open http://localhost:8000 for the landing page, http://localhost:8000/try for the sandbox, or http://localhost:8000/control and sign in with your `ADMIN_PASSWORD`.
+Leave `DATABASE_URL` unset to use a local `leash.db` SQLite file. Without `OPENROUTER_API_KEY` the demo runs on the free fake AI only.
 
-To watch an external agent get cut off, issue a token in the dashboard and run:
+Frontend (static, no dependencies):
 
 ```bash
-python examples/agent.py http://localhost:8000 lsh_...
+cd frontend
+VITE_API_BASE=http://localhost:8787 npm run build   # writes dist/ and config.js
+python -m http.server 3000 --directory dist         # open http://localhost:3000/try.html
 ```
 
-## Deploy to Render
+The backend's default `CORS_ORIGINS` is `http://localhost:3000`.
 
-1. **Push this folder to a GitHub repo.** Check that `.env` is *not* in it (`.gitignore` already excludes it).
-2. In the [Render Dashboard](https://dashboard.render.com), click **New > Blueprint** and choose your repo. Render reads `render.yaml` and creates:
-   - a free web service called `leash`
-   - a free Postgres database called `leash-db`
-3. Render asks for the secret values:
-   - `ADMIN_PASSWORD`: choose a strong password for the dashboard
-   - `OPENAI_API_KEY`: your OpenAI key (or type `none` to run fake-only)
-   - `OPENAI_MODEL`: a small, cheap model your key can use (check your OpenAI dashboard), or `none`
-   - `SIGNING_SECRET` and `KEY_ENCRYPTION_KEY` are generated for you automatically.
-   - If your key comes from a gateway rather than OpenAI itself, either add `OPENAI_BASE_URL` (the gateway's address, ending in `/v1`) under the service's **Environment** tab afterwards, or store the gateway as a key in the control room's **Bring your own key** section.
-4. Click **Apply**. When the deploy finishes, open the `onrender.com` URL. Share that link with judges; your control room is at `/control`.
+To watch an external agent get cut off, issue a token under **Log and tools** on `/try` and run:
 
-**Free-tier notes:** a free web service sleeps after 15 minutes without traffic and takes about a minute to wake, so open the page a few minutes before you present. A free Render Postgres database expires 30 days after creation, which is fine for a hackathon.
+```bash
+python examples/agent.py http://localhost:8787 lsh_...
+```
 
-**Before demoing with a real key:** set a usage limit on your OpenAI project as well. `GLOBAL_REAL_BUDGET_USD` (default $1.00) is Leash's own ceiling on real spend.
+## Deploy (AI Lodge: Cloud Run + Vercel + Neon)
+
+- **Backend → Cloud Run.** `.github/workflows/deploy.yml` builds the `Dockerfile` at the repo root, pushes it to Docker Hub and deploys the service `ail-ay2627-s1-philbert-leash` on every push to `main`. Env vars come from the repo's `DOTENV` secret (`gh secret set DOTENV < .env`). The service URL is `https://ail-ay2627-s1-philbert-leash-464725632804.asia-southeast3.run.app`.
+- **Single instance.** The workflow pins `--max-instances=1` (the club default is 2) and the container runs one uvicorn worker: budgets and audit chains are written under an in-process lock. State lives in Postgres, so scaling to zero is fine.
+- **Database → Neon.** Set `DATABASE_URL` to the Neon connection string with `?sslmode=require`. Tables are created at startup (`CREATE TABLE IF NOT EXISTS`), so an empty database is all it needs.
+- **Frontend → Vercel.** Root directory `frontend`, build command `npm run build`, output `dist` (both in `frontend/vercel.json`). Set `VITE_API_BASE` to the Cloud Run URL. `build.js` writes `config.js` and a Content-Security-Policy whose `connect-src` allows that origin only. The site is `https://ail-ay2627-s1-philbert-leash.vercel.app`, which goes in the backend's `CORS_ORIGINS`.
+- **Rate limit.** Starting a real-AI agent run (issuing a real-AI pass) uses the shared AI Lodge rate limiter, bucket `agent` (`RATE_LIMIT_AGENT_MAX`, default 5 per `RATE_LIMIT_WINDOW_SECONDS`, default 5 days, per IP). Over the limit the page shows the AI Lodge modal and the run falls back to the free fake AI; a paused demo (503) shows a notice instead. Spend is capped separately by the dollar budgets below.
+
+**Before demoing with a real key:** set a credit limit on the OpenRouter key as well. `GLOBAL_REAL_BUDGET_USD` (default $1.00) is Leash's own ceiling on real spend.
 
 ## Environment variables
 
+Backend (see `.env.example`):
+
 | Variable | Required | Purpose |
 |---|---|---|
-| `SIGNING_SECRET` | yes | Master secret. All signing keys derive from it. Render generates it. |
-| `KEY_ENCRYPTION_KEY` | yes on Render | Master key that encrypts stored provider keys. Render generates it. Kept separate from `SIGNING_SECRET` so each can be rotated on its own; changing it makes existing stored keys unreadable, so re-add them. |
-| `ADMIN_PASSWORD` | yes | Password for the dashboard. |
-| `DATABASE_URL` | on Render | Postgres connection. Locally, SQLite is used if unset. |
-| `OPENAI_API_KEY` | no | Enables the real OpenAI upstream. |
-| `OPENAI_MODEL` | no | The only model real-upstream tokens may use. |
-| `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | Your model's prices, for accurate budgets. Defaults: 0.15 / 0.60. |
-| `GLOBAL_REAL_BUDGET_USD` | no | Ceiling on all real spend. Default 1.00. |
+| `SIGNING_SECRET` | yes | Master secret. All signing keys derive from it. Generate once (`python -c "import secrets; print(secrets.token_hex(32))"`) and keep it: changing it invalidates every stored chain. Required whenever `DATABASE_URL` is set. |
+| `DATABASE_URL` | yes in production | Neon Postgres, `postgresql://...neon.tech/db?sslmode=require`. Locally, SQLite is used if unset. |
+| `CORS_ORIGINS` | yes in production | Comma-separated origins allowed to call the API, e.g. the Vercel URL. |
+| `OPENROUTER_API_KEY` | no | Enables real AI through OpenRouter. Without it the demo is fake-AI only. |
+| `OPENROUTER_MODEL` | no | The only model real-AI passes may use. Default `openai/gpt-4o-mini`. |
+| `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | The model's prices in USD per 1M tokens, used for the worst-case estimate before each call (the settled cost uses OpenRouter's reported `usage.cost`). Defaults 0.15 / 0.60 match `openai/gpt-4o-mini`. |
+| `GLOBAL_REAL_BUDGET_USD` | no | Ceiling on all real spend, ever. Default 1.00. |
+| `PUBLIC_REAL_BUDGET_USD` | no | Real-AI spending the public demo may use in total. Default 0.20. |
+| `SANDBOX_REAL_PER_VISITOR_USD` | no | Each visitor's share of that. Default 0.01. |
 | `DEFAULT_MAX_COMPLETION_TOKENS` | no | Output cap per real call if the agent sets none. Default 300. |
-| `SANDBOX_ENABLED` | no | Set to `false` to turn off the public sandbox at `/try`. Default on. |
-| `ACCOUNTS_ENABLED` | no | Set to `false` to turn off sign-up and customer workspaces. Default on. |
-| `PUBLIC_REAL_BUDGET_USD` | no | Real-AI spending the public demo may use, in total, from the server's key. Default 0.20. |
-| `SANDBOX_REAL_PER_VISITOR_USD` | no | Each public visitor's share of that. Default 0.01. |
-| `REPO_URL` | no | Source code link on the landing page. On Render it's filled in automatically from your repo. |
+| `SANDBOX_ENABLED` | no | Set to `false` to turn off the public sandbox. Default on. |
+| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | yes in production | Shared AI Lodge rate limiter. Without them, run limits are off (fine locally). |
+| `RATE_LIMIT_AGENT_MAX`, `RATE_LIMIT_WINDOW_SECONDS` | no | Fallback run limit per IP and window. Defaults 5 and 432000. |
+
+Frontend (Vercel): `VITE_API_BASE`, the Cloud Run URL.
 
 ## API
 
-| Endpoint | Who | What |
-|---|---|---|
-| `POST /v1/chat/completions` | agents | OpenAI-compatible proxy. `Authorization: Bearer lsh_...` |
-| `POST /api/tokens` | operator | Issue a token |
-| `POST /api/tokens/{id}/revoke` | operator | Revoke one token |
-| `POST /api/kill` | operator | Stop or release every agent |
-| `GET /api/connections`, `POST /api/connections` | operator | List or store provider keys (encrypted; the key is never returned) |
-| `POST /api/connections/{id}/test`, `POST /api/connections/{id}/remove` | operator | Send one call through a stored key, or erase it |
-| `GET /api/audit`, `GET /api/audit/verify` | operator | Read and verify the chain |
-| `GET /api/alerts`, `GET /api/stats` | operator | Alerts and counters |
-| `GET /api/tokens/{id}/receipt` | operator | Leash's own account of one pass, built from the sealed log, with the seal check |
-| `POST /api/audit/seal-test?jti=` | operator | Edit a copy of the log the way a cover-up would and check it; the real log is untouched |
-| `GET /api/webhook`, `POST /api/webhook`, `POST /api/webhook/test`, `POST /api/webhook/remove` | operator | Slack or Discord alerts |
-| `POST /api/account/signup`, `/login`, `/logout`, `GET /api/account/me` | customers | Accounts and the setup checklist |
+| Endpoint | What |
+|---|---|
+| `GET /api/health` | `{"status": "ok"}` |
+| `POST /v1/chat/completions` | OpenAI-compatible proxy. `Authorization: Bearer lsh_...` |
+| `POST /unprotected/v1/chat/completions` | The "no Leash" half of the demo (fake AI only, no checks) |
+| `POST /api/sb/session` | Open or reuse a sandbox; returns its id |
+| `GET /api/sb/config`, `GET /api/sb/stats`, `GET /api/sb/canaries` | Sandbox settings, counters and trap keys |
+| `POST /api/sb/tokens`, `GET /api/sb/tokens` | Issue or list passes (a real-AI pass counts against the `agent` rate limit) |
+| `POST /api/sb/tokens/{id}/revoke`, `GET /api/sb/tokens/{id}/receipt` | Revoke a pass; Leash's own account of one pass with the seal check |
+| `POST /api/sb/kill` | Stop or release every agent in the sandbox |
+| `GET /api/sb/audit`, `GET /api/sb/audit/verify`, `GET /api/sb/alerts` | Read and verify the chain; alerts |
+| `POST /api/sb/demo/tamper`, `POST /api/sb/demo/reset` | Edit a log entry the way a cover-up would; start a fresh chain |
 
-Operator endpoints need the `X-Admin-Key` header. The sandbox exposes the same endpoints under `/api/sb/...`, scoped to the visitor's own space by a cookie (created with `POST /api/sb/session`) and requiring an `X-Leash-Sandbox: 1` header, which blocks cross-site request forgery. Customer workspaces use `/api/ws/...` with the session cookie and an `X-Leash-App: 1` header; they have no demo endpoints, and the sandbox has no webhook endpoints.
+Every `/api/sb/*` call except `session` needs the `X-Leash-Session` header with the sandbox id. A custom header can't be sent cross-site without a CORS preflight, which only `CORS_ORIGINS` pass, so this also blocks cross-site request forgery.
 
 ## Abuse protection on the public pages
 
-- Real AI in the public demo is capped: $0.20 in total and 1 cent per visitor (both configurable), at most 150 output tokens and 8,000 characters per call, 40 real calls per minute per address. The caps are running totals that survive demo resets. When they run out, `/try` uses the free fake AI. Visitors' own saved keys are never used for real calls.
-- Sandbox limits are clamped: 10 minutes, 100 calls and $5 of pretend money per token, 60 tokens and 3,000 log entries per sandbox, 300 sandboxes at once.
-- Rate limits per IP address and overall on the proxy, the sandbox API, new sandboxes and the unprotected demo path.
-- Wrong operator passwords are throttled after 10 tries in 5 minutes.
-- Failed attempts that can't be tied to a sandbox are logged to the operator's chain at a limited rate, so the public can't flood it.
+- Real AI in the public demo is capped: $0.20 in total and 1 cent per visitor (both configurable), at most 150 output tokens and 8,000 characters per call. The caps are running totals in the database that survive demo resets. When they run out, `/try` uses the free fake AI.
+- Real agent runs per IP are limited by the shared AI Lodge rate limiter (bucket `agent`), which also has an operator kill switch.
+- Sandbox limits are clamped: 10 minutes, 100 calls and $5 per pass, 60 passes and 3,000 log entries per sandbox, 300 sandboxes at once.
+- In-memory per-IP limits on the free paths (proxy, sandbox API, new sandboxes, unprotected demo path) stop floods.
+- Failed attempts that can't be tied to a sandbox are logged to a server-wide chain at a limited rate.
 
 ## Project layout
 
 ```
 app/
-  main.py        pages, proxy, operator, sandbox and workspace APIs, accounts
-  accounts.py    scrypt password hashing and signed session cookies
-  notify.py      Slack and Discord alerts (encrypted webhook addresses)
-  tokens.py      HMAC-signed scoped tokens
-  audit.py       HMAC hash chain and verification, one chain per space
-  guards.py      canary keys and outbound secret scanning
-  upstream.py    fake upstream, OpenAI forwarding, cost accounting
-  ratelimit.py   per-IP sliding-window rate limits
-  keyvault.py    AES-256-GCM envelope encryption, plus password- and pass-bound locks
-  config.py      settings from environment variables, key derivation
-  db.py          tables (SQLite locally, Postgres on Render)
-  static/        landing page, demo dashboard, sign-up and workspace pages
-examples/agent.py   a runaway agent to point at Leash
-render.yaml         Render Blueprint
+  main.py               proxy and sandbox API
+  tokens.py             HMAC-signed scoped tokens
+  audit.py              HMAC hash chain and verification, one chain per space
+  guards.py             canary keys and outbound secret scanning
+  upstream.py           fake upstream, OpenRouter forwarding, cost accounting
+  rate_limit.py         adapter for the shared AI Lodge rate limiter (bucket "agent")
+  rate_limit_engine.py  shared engine, vendored unmodified
+  ratelimit.py          in-memory abuse limits on the free paths
+  config.py             settings from environment variables, key derivation
+  db.py                 tables, created at startup (SQLite locally, Neon in production)
+frontend/               static pages for Vercel (index.html, try.html, build.js)
+examples/agent.py       a runaway agent to point at Leash
+Dockerfile, .github/workflows/deploy.yml
 ```
 
 ## Limits and next steps
 
-- **Single instance.** A process lock keeps budgets and the chain consistent, and rate limits live in memory, so the start command pins one worker. Scaling out would need a database-level lock and a shared store such as Redis.
+- **Single instance.** A process lock keeps budgets and the chain consistent, so the service runs one worker on one instance. Scaling out would need a database-level lock.
 - **Deleting the newest entries** can't be detected from the chain alone. Fix: periodically publish the chain's head hash somewhere external (an email, a public repo, a timestamping service).
 - **Streaming** responses aren't supported yet; `stream` is forced off.
 - **Changing `SIGNING_SECRET`** invalidates every token and makes the old log fail verification from entry #1. That's by design. Use **Reset demo** to start a fresh chain.
-- **Master key in an environment variable.** Good for a hackathon, and no longer enough on its own to read a workspace key. In production it would live in a key management service (AWS KMS, Google Cloud KMS, HashiCorp Vault) so the server never holds it in plain form.
-- **A taken-over server** could still see keys while they're in use. Mitigations: provider-side spending limits, a key made just for Leash, alerts on unusual use, and in future an isolated signing service that holds keys apart from the web app.
-- **No password reset yet.** Because saved keys are tied to the team's password, a reset (when added) would mean adding keys again. That's the price of the database alone being useless to an attacker.
-- **The operator's own key** (`OPENAI_API_KEY`) and the control room's saved keys are locked with the master key only, because the server needs them without anyone logged in.
-- **Accounts are single-user** and sessions can't be revoked server-side before they expire (7 days). Team plans would add several people per workspace, roles and a session list.
-- **Next:** per-tool scopes (not just per-model), human approval with signed sign-off for risky actions, Ed25519 signatures so third parties can verify the log without the secret, and a one-click master-key rotation.
+- **Next:** per-tool scopes (not just per-model), human approval with signed sign-off for risky actions, Ed25519 signatures so third parties can verify the log without the secret.
