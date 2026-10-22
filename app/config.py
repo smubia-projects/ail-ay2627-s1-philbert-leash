@@ -71,9 +71,9 @@ def _optional(name: str) -> str:
 
 # The real AI goes through OpenRouter's OpenAI-compatible API. The OPENAI_* names
 # below are kept because the rest of the app calls this upstream "openai".
-OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
-OPENAI_API_KEY = _optional("OPENROUTER_API_KEY")
-OPENAI_MODEL = _optional("OPENROUTER_MODEL") or "openai/gpt-4o-mini"
+OPENAI_BASE_URL = (_optional("API_BASE_URL") or _optional("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/")
+OPENAI_API_KEY = (_optional("API_KEY") or _optional("OPENROUTER_API_KEY"))
+OPENAI_MODEL = (_optional("MODEL_NAME") or _optional("OPENROUTER_MODEL")) or "openai/gpt-4o-mini"
 OPENAI_ENABLED = bool(OPENAI_API_KEY and OPENAI_MODEL)
 
 # Prices in USD per 1M tokens for OPENROUTER_MODEL (defaults: openai/gpt-4o-mini on

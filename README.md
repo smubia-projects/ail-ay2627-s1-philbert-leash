@@ -162,12 +162,12 @@ Backend (FastAPI, SQLite by default):
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env               # fill in SIGNING_SECRET; OPENROUTER_API_KEY is optional
+cp .env.example .env               # fill in SIGNING_SECRET; API_KEY is optional
 uvicorn app.main:app --port 8787 --reload
 curl http://localhost:8787/api/health   # {"status":"ok"}
 ```
 
-Leave `DATABASE_URL` unset to use a local `leash.db` SQLite file. Without `OPENROUTER_API_KEY` the demo runs on the free fake AI only.
+Leave `DATABASE_URL` unset to use a local `leash.db` SQLite file. Without `API_KEY` the demo runs on the free fake AI only.
 
 Frontend (static, no dependencies):
 
@@ -204,8 +204,8 @@ Backend (see `.env.example`):
 | `SIGNING_SECRET` | yes | Master secret. All signing keys derive from it. Generate once (`python -c "import secrets; print(secrets.token_hex(32))"`) and keep it: changing it invalidates every stored chain. Required whenever `DATABASE_URL` is set. |
 | `DATABASE_URL` | yes in production | Neon Postgres, `postgresql://...neon.tech/db?sslmode=require`. Locally, SQLite is used if unset. |
 | `CORS_ORIGINS` | yes in production | Comma-separated origins allowed to call the API, e.g. the Vercel URL. |
-| `OPENROUTER_API_KEY` | no | Enables real AI through OpenRouter. Without it the demo is fake-AI only. |
-| `OPENROUTER_MODEL` | no | The only model real-AI passes may use. Default `openai/gpt-4o-mini`. |
+| `API_KEY` | no | Enables real AI through OpenRouter. Without it the demo is fake-AI only. |
+| `MODEL_NAME` | no | The only model real-AI passes may use. Default `openai/gpt-4o-mini`. |
 | `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | The model's prices in USD per 1M tokens, used for the worst-case estimate before each call (the settled cost uses OpenRouter's reported `usage.cost`). Defaults 0.15 / 0.60 match `openai/gpt-4o-mini`. |
 | `GLOBAL_REAL_BUDGET_USD` | no | Ceiling on all real spend, ever. Default 1.00. |
 | `PUBLIC_REAL_BUDGET_USD` | no | Real-AI spending the public demo may use in total. Default 0.20. |
