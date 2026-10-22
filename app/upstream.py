@@ -99,7 +99,9 @@ def openai_completion(body: dict) -> dict:
     payload = dict(body)
     payload["stream"] = False
     if "max_tokens" not in payload and "max_completion_tokens" not in payload:
-        payload["max_completion_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
+        payload["max_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
+    # Ask OpenRouter to report the call's real cost in `usage.cost`.
+    payload["usage"] = {"include": True}
     try:
         response = httpx.post(
             f"{base_url}/chat/completions",
@@ -122,6 +124,9 @@ def cost_of(kind: str, usage: dict) -> float:
     """`kind` is "fake" for the free fake AI, anything else for a real provider."""
     if kind == "fake":
         return config.FAKE_COST_PER_CALL
+    reported = usage.get("cost")
+    if isinstance(reported, (int, float)) and not isinstance(reported, bool) and reported >= 0:
+        return float(reported)  # OpenRouter's own figure for this call, in USD
     prompt = usage.get("prompt_tokens", 0) or 0
     completion = usage.get("completion_tokens", 0) or 0
     return (prompt * config.PRICE_INPUT_PER_1M + completion * config.PRICE_OUTPUT_PER_1M) / 1_000_000
