@@ -36,8 +36,6 @@ def _fake_reply(prompt: str) -> str:
         return "Thanks for your email. We'll get back to you shortly. Maya's Shop"
     if prompt.startswith("Reply to the auto-reply"):
         return "Thank you for letting us know. Maya's Shop"
-    if "say hello" in prompt.lower():  # the workspace's "Try it" button
-        return "Hello! I can hear you. This reply came from Leash's free practice AI."
     return next(_FAKE_REPLIES)
 
 
@@ -94,15 +92,10 @@ def _scrub(message: str, api_key: str) -> str:
     return _KEYLIKE.sub("[key]", message)
 
 
-def openai_completion(body: dict, base_url: str = "", api_key: str = "") -> dict:
-    """Forward to an OpenAI-compatible API. This is the ONLY place a real key is used.
-
-    With no arguments it uses the server's own key from the environment. For a
-    team's stored key ("bring your own key"), the caller passes the base URL
-    and the key it has just decrypted.
-    """
-    base_url = (base_url or config.OPENAI_BASE_URL).rstrip("/")
-    api_key = api_key or config.OPENAI_API_KEY
+def openai_completion(body: dict) -> dict:
+    """Forward to the OpenAI-compatible upstream. This is the ONLY place the real key is used."""
+    base_url = config.OPENAI_BASE_URL
+    api_key = config.OPENAI_API_KEY
     payload = dict(body)
     payload["stream"] = False
     if "max_tokens" not in payload and "max_completion_tokens" not in payload:

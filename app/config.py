@@ -57,28 +57,6 @@ def derive_key(purpose: str) -> bytes:
 TOKEN_KEY = derive_key("leash/token-signing/v1")
 AUDIT_KEY = derive_key("leash/audit-chain/v1")
 CANARY_KEY = derive_key("leash/canary/v1")
-FINGERPRINT_KEY = derive_key("leash/key-fingerprint/v1")
-SESSION_KEY = derive_key("leash/session/v1")
-SESSION_ENC_KEY = derive_key("leash/session-encryption/v1")   # encrypts the account key inside the session cookie
-ACCOUNT_SALT_KEY = derive_key("leash/account-salt/v1")        # per-account salt for the password-derived key
-
-# --- Master key for encrypting stored provider keys ----------------------------
-# Kept separate from SIGNING_SECRET so each can be rotated on its own. If it's
-# not set (local development), one is derived from SIGNING_SECRET instead.
-_kek_source = os.environ.get("KEY_ENCRYPTION_KEY", "")
-if _kek_source:
-    KEY_ENCRYPTION_KEY = hmac.new(_kek_source.encode(), b"leash/kek/v1", hashlib.sha256).digest()
-else:
-    KEY_ENCRYPTION_KEY = derive_key("leash/kek/v1")
-    log.warning("KEY_ENCRYPTION_KEY is not set; deriving the master key from SIGNING_SECRET.")
-# A short, non-secret id for the master key, stored next to each wrapped key.
-KEK_ID = hashlib.sha256(b"leash/kek-id/" + KEY_ENCRYPTION_KEY).hexdigest()[:12]
-
-# --- Admin access to the dashboard ------------------------------------------
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-if not ADMIN_PASSWORD:
-    ADMIN_PASSWORD = secrets.token_urlsafe(12)
-    log.warning("ADMIN_PASSWORD is not set. Generated one for this run: %s", ADMIN_PASSWORD)
 
 # --- Upstream (the real AI provider) ----------------------------------------
 def _optional(name: str) -> str:
@@ -104,11 +82,6 @@ DEFAULT_MAX_COMPLETION_TOKENS = int(_float("DEFAULT_MAX_COMPLETION_TOKENS", 300)
 # The fake upstream pretends every call costs this much.
 FAKE_COST_PER_CALL = _float("FAKE_COST_PER_CALL", 0.05)
 
-# Upper bounds on what any single token may be granted.
-MAX_TTL_MINUTES = 60
-MAX_CALLS_PER_TOKEN = 1000
-MAX_BUDGET_PER_TOKEN_USD = 5.00
-
 # --- Public sandbox -------------------------------------------------------------
 # Lets anyone run the demo at /try in an isolated space, fake upstream only.
 SANDBOX_ENABLED = os.environ.get("SANDBOX_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
@@ -118,29 +91,12 @@ SANDBOX_MAX_AUDIT = 3000         # log entries per sandbox before it asks for a 
 SANDBOX_MAX_TOKENS = 60          # tokens per sandbox
 SANDBOX_MAX_TTL_MINUTES = 10
 SANDBOX_MAX_CALLS = 100
-SANDBOX_MAX_BUDGET_USD = 5.00    # pretend money, fake upstream only
-SANDBOX_MAX_CONNECTIONS = 5      # stored provider keys per sandbox
+SANDBOX_MAX_BUDGET_USD = 5.00    # cap per pass; real-AI passes are also capped by the budgets below
 # Real AI in the public demo, paid from the server's own key, with hard caps.
 PUBLIC_REAL_BUDGET_USD = _float("PUBLIC_REAL_BUDGET_USD", 0.20)          # all visitors together, ever
 SANDBOX_REAL_PER_VISITOR_USD = _float("SANDBOX_REAL_PER_VISITOR_USD", 0.01)  # each visitor's share
 SANDBOX_REAL_MAX_TOKENS = 150        # output cap per public real call
 SANDBOX_REAL_MAX_PROMPT_CHARS = 8000 # input cap per public real call
-MAX_CONNECTIONS = 20             # stored provider keys in the control room
-
-# --- Customer accounts (Leash as a service) --------------------------------------
-ACCOUNTS_ENABLED = os.environ.get("ACCOUNTS_ENABLED", "true").strip().lower() not in ("false", "0", "no", "off")
-ACCOUNT_MAX = 1000                  # accounts the server will hold
-ACCOUNT_MAX_CONNECTIONS = 10        # saved keys per workspace
-ACCOUNT_MAX_TOKENS = 500            # agent passes per workspace
-ACCOUNT_MAX_TTL_MINUTES = 30 * 24 * 60   # an agent's pass can last up to 30 days
-ACCOUNT_MAX_CALLS = 100_000
-ACCOUNT_MAX_BUDGET_USD = 500.00
-
-# Link to the source code on the landing page. On Render this is filled in
-# automatically from the repo the service deploys from.
-REPO_URL = _optional("REPO_URL")
-if not REPO_URL and os.environ.get("RENDER_GIT_REPO_SLUG"):
-    REPO_URL = f"https://github.com/{os.environ['RENDER_GIT_REPO_SLUG']}"
 
 # --- Database -----------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./leash.db")

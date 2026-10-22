@@ -40,9 +40,8 @@ def _sign(body: str) -> str:
 
 
 def mint(space: str, agent: str, upstream: str, ttl_minutes: int, max_calls: int, budget_usd: float,
-         jti: str | None = None, unlock: str | None = None) -> tuple[str, dict]:
-    """`unlock` is a secret that only this pass carries: for a workspace's saved
-    key, it is what unlocks the key. Leash never stores the pass itself."""
+         jti: str | None = None) -> tuple[str, dict]:
+    """Sign a new pass. Leash never stores the pass itself, only its id."""
     now = int(time.time())
     claims = {
         "jti": jti or secrets.token_hex(8),
@@ -54,8 +53,6 @@ def mint(space: str, agent: str, upstream: str, ttl_minutes: int, max_calls: int
         "max_calls": max_calls,
         "budget_usd": round(budget_usd, 4),
     }
-    if unlock:
-        claims["k"] = unlock
     body = _b64e(json.dumps(claims, separators=(",", ":"), sort_keys=True).encode())
     return f"{PREFIX}{body}.{_sign(body)}", claims
 

@@ -1,9 +1,12 @@
-"""Database tables (SQLite locally, Postgres on Render).
+"""Database tables (SQLite locally, Neon Postgres in production).
 
 Every row belongs to a "space". The operator's control room is the space
 "main"; each public sandbox visitor gets their own space, with its own
 tokens, alerts, kill switch, canary keys and hash chain. Nothing a visitor
 does can touch another space.
+
+Tables are created at startup with CREATE TABLE IF NOT EXISTS (metadata.create_all
+checks first), so an empty database needs no manual migration.
 """
 import threading
 
@@ -22,14 +25,21 @@ from sqlalchemy import (
 
 from . import config
 
-connect_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(config.DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
+if config.DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(config.DATABASE_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+else:
+    # Small pool: one Cloud Run instance, and Neon's free tier has a low connection
+    # limit. Neon closes idle connections, so recycle them and ping before use.
+    engine = create_engine(
+        config.DATABASE_URL, pool_size=3, max_overflow=2, pool_pre_ping=True, pool_recycle=300
+    )
 metadata = MetaData()
 
 MAIN = "main"
 
 # One lock serialises every state change. The app runs as a single process
-# (see the start command), so this keeps budgets and hash chains consistent.
+# (one uvicorn worker, Cloud Run --max-instances=1), so this keeps budgets and
+# hash chains consistent.
 write_lock = threading.Lock()
 
 spaces = Table(
@@ -86,61 +96,6 @@ canaries = Table(
     Column("key", String(80), primary_key=True),
     Column("space", String(40), nullable=False, index=True),
     Column("planted_in", String(120), nullable=False),
-)
-
-# Provider keys brought by a team ("bring your own key"). The key itself is
-# never stored: only AES-256-GCM ciphertext and a data key wrapped by the
-# master key, which lives outside the database. See keyvault.py.
-connections = Table(
-    "leash_connections",
-    metadata,
-    Column("id", String(16), primary_key=True),
-    Column("space", String(40), nullable=False, index=True),
-    Column("name", String(64), nullable=False),
-    Column("base_url", String(200), nullable=False),
-    Column("model", String(100), nullable=False),
-    Column("key_hint", String(8), nullable=False),
-    Column("key_fingerprint", String(64), nullable=False),
-    Column("ciphertext", Text, nullable=False),
-    Column("wrapped_dek", Text, nullable=False),
-    Column("kek_id", String(16), nullable=False),
-    Column("created_ms", BigInteger, nullable=False),
-    Column("revoked", Boolean, nullable=False, default=False),
-)
-
-# For passes that use a workspace's saved key: a copy of that key's data key,
-# wrapped so that only the pass (whose secret Leash never stores) can unlock it.
-pass_keys = Table(
-    "leash_pass_keys",
-    metadata,
-    Column("jti", String(32), primary_key=True),
-    Column("space", String(40), nullable=False, index=True),
-    Column("conn_id", String(16), nullable=False),
-    Column("wrapped_dek", Text, nullable=False),
-)
-
-# Customer accounts. Each one owns a private space named "acct_<id>".
-accounts = Table(
-    "leash_accounts",
-    metadata,
-    Column("id", String(16), primary_key=True),
-    Column("email", String(254), nullable=False, unique=True, index=True),
-    Column("team", String(80), nullable=False),
-    Column("password_hash", String(200), nullable=False),
-    Column("space", String(40), nullable=False, unique=True),
-    Column("created_ms", BigInteger, nullable=False),
-)
-
-# One Slack or Discord webhook per space, encrypted like a saved key.
-webhooks = Table(
-    "leash_webhooks",
-    metadata,
-    Column("space", String(40), primary_key=True),
-    Column("kind", String(16), nullable=False),
-    Column("hint", String(80), nullable=False),
-    Column("ciphertext", Text, nullable=False),
-    Column("wrapped_dek", Text, nullable=False),
-    Column("created_ms", BigInteger, nullable=False),
 )
 
 settings = Table(
