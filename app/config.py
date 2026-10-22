@@ -37,7 +37,11 @@ def _float(name: str, default: float) -> float:
 
 # --- Master secret -----------------------------------------------------------
 # Every other key is derived from this one, so one secret controls everything.
-SIGNING_SECRET = os.environ.get("SIGNING_SECRET", "")
+SIGNING_SECRET = os.environ.get("SIGNING_SECRET", "").strip()
+if not SIGNING_SECRET and os.environ.get("DATABASE_URL", "").strip():
+    # With a persistent database, a random per-process secret would break every
+    # saved audit chain on the next cold start. Refuse to start instead.
+    raise RuntimeError("SIGNING_SECRET must be set when DATABASE_URL is set (see .env.example).")
 if not SIGNING_SECRET:
     SIGNING_SECRET = secrets.token_hex(32)
     log.warning(
