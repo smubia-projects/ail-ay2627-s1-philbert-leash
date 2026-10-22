@@ -3,10 +3,12 @@
 Agents never hold the real API key. They get short-lived, signed tokens
 with hard limits; every decision is written to a tamper-evident log.
 
-This build is the public demo only:
-    /          public landing page
-    /try       public sandbox: the "agent with a budget" run and Maya's weekend,
-               isolated per visitor, real AI capped by a shared server budget
+This build is the API for the public demo only (the pages live on Vercel):
+    GET  /api/health                 health check
+    POST /api/sb/session             open or reuse a visitor's sandbox
+    *    /api/sb/...                 sandbox operations (X-Leash-Session header)
+    POST /v1/chat/completions        the proxy: agents call it with a Leash pass
+    POST /unprotected/v1/chat/...    the "no Leash" half of the demo (fake AI only)
 
 Spaces: "main" holds server-wide records (unattributed attempts, global budget
 alerts); "sb_<id>" is a visitor's sandbox. Rows in every table belong to
@@ -19,11 +21,10 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
@@ -34,8 +35,10 @@ from .ratelimit import client_ip, limiter
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("leash")
 
-STATIC_DIR = Path(__file__).parent / "static"
-SANDBOX_COOKIE = "leash_sb"
+# The sandbox id travels in a header, not a cookie: the pages are on a different
+# origin (Vercel), where third-party cookies are unreliable. A custom header also
+# can't be sent cross-site without a CORS preflight, which only CORS_ORIGINS pass.
+SESSION_HEADER = "x-leash-session"
 _SANDBOX_ID = re.compile(r"^[0-9a-f]{24}$")
 
 # The agent run asks for a one-call "status report" pass after the main run.
@@ -70,14 +73,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Leash", version="1.1.0", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-
-CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; "
-    "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; "
-    "frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
-)
+# API responses are JSON only; the pages' own CSP is set by the Vercel site.
+CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
 
 
 @app.middleware("http")
@@ -86,14 +84,25 @@ async def _security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
-    # Only our own scripts may run, and pages may only talk to this server. Even if
-    # someone slipped markup into a page, it couldn't load a script or send data elsewhere.
     response.headers["Content-Security-Policy"] = CSP
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=()"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.headers.get("x-forwarded-proto", request.url.scheme) == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+
+# Added last so it wraps everything, including the security-headers middleware.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Leash-Session"],
+    # The demo pages read these from proxy responses to draw the budget meters.
+    expose_headers=["X-Leash-Calls-Remaining", "X-Leash-Budget-Remaining", "X-Leash-Call-Cost"],
+    max_age=600,
+)
 
 
 def _alert(conn, space: str, kind: str, message: str, jti=None) -> None:
@@ -157,31 +166,9 @@ def _too_many(message: str = "Too many requests. Slow down and try again in a mi
     return _blocked(429, "RATE_LIMITED", message)
 
 
-# ---------------------------------------------------------------------------
-# Pages
-# ---------------------------------------------------------------------------
-def _page(name: str, **replacements: str) -> HTMLResponse:
-    text = (STATIC_DIR / name).read_text(encoding="utf-8")
-    for key, value in replacements.items():
-        text = text.replace(key, value)
-    return HTMLResponse(text)
-
-
-@app.get("/", include_in_schema=False)
-def landing():
-    return _page("landing.html")
-
-
-@app.get("/try", include_in_schema=False)
-def sandbox_page():
-    if not config.SANDBOX_ENABLED:
-        return HTMLResponse("<p>The public sandbox is turned off. <a href='/'>Back to Leash</a></p>", status_code=404)
-    return _page("dashboard.html")
-
-
-@app.get("/healthz", include_in_schema=False)
-def healthz():
-    return {"ok": True}
+@app.get("/api/health", include_in_schema=False)
+def health():
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
@@ -705,17 +692,13 @@ def op_reset(space: str) -> dict:
 def _sandbox_checks(request: Request) -> None:
     if not config.SANDBOX_ENABLED:
         raise HTTPException(404, "The public sandbox is turned off.")
-    # A custom header can't be sent cross-site without a CORS preflight,
-    # which this server never grants: that blocks cross-site request forgery.
-    if request.headers.get("x-leash-sandbox") != "1":
-        raise HTTPException(403, "Missing sandbox header.")
     if not limiter.allow(f"sandbox-api:{client_ip(request)}", 300, 60):
         raise HTTPException(429, "Too many requests. Slow down and try again in a minute.")
 
 
 def sandbox_space(request: Request) -> str:
     _sandbox_checks(request)
-    sid = request.cookies.get(SANDBOX_COOKIE, "")
+    sid = request.headers.get(SESSION_HEADER, "")
     if _SANDBOX_ID.fullmatch(sid):
         space = f"sb_{sid}"
         with db.engine.connect() as conn:
@@ -748,37 +731,30 @@ sandbox_router = APIRouter(prefix="/api/sb")
 
 
 @sandbox_router.post("/session")
-def sandbox_session(request: Request, response: Response):
-    """Reuse the visitor's sandbox if it still exists, otherwise create one."""
+def sandbox_session(request: Request):
+    """Reuse the visitor's sandbox if it still exists, otherwise create one.
+
+    The page keeps the returned session id and sends it back in X-Leash-Session."""
     _sandbox_checks(request)
-    sid = request.cookies.get(SANDBOX_COOKIE, "")
+    sid = request.headers.get(SESSION_HEADER, "")
     with db.write_lock, db.engine.begin() as conn:
         _cleanup_sandboxes(conn)
         if _SANDBOX_ID.fullmatch(sid):
             space = f"sb_{sid}"
             if conn.execute(select(db.spaces.c.space).where(db.spaces.c.space == space)).first():
                 guards.plant_canaries(conn, space)  # adds any trap keys introduced since it was created
-                return {"ok": True, "new": False}
+                return {"ok": True, "new": False, "session": sid}
         if not limiter.allow(f"sandbox-new:{client_ip(request)}", 20, 3600):
             raise HTTPException(429, "Too many new sandboxes from your network. Try again later.")
         active = conn.execute(
             select(func.count()).select_from(db.spaces).where(db.spaces.c.space.startswith("sb_", autoescape=True))
         ).scalar()
         if active >= config.SANDBOX_MAX_SPACES:
-            raise HTTPException(503, "The sandbox is busy right now. Please try again in a few minutes.")
+            # 503 is reserved for the rate-limit kill switch ("demo paused").
+            raise HTTPException(423, "The sandbox is busy right now. Please try again in a few minutes.")
         sid = secrets.token_hex(12)
         ensure_space(conn, f"sb_{sid}")
-    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
-    response.set_cookie(
-        SANDBOX_COOKIE,
-        sid,
-        max_age=config.SANDBOX_TTL_HOURS * 3600,
-        httponly=True,
-        samesite="lax",
-        secure=secure,
-        path="/",
-    )
-    return {"ok": True, "new": True}
+    return {"ok": True, "new": True, "session": sid, "ttl_hours": config.SANDBOX_TTL_HOURS}
 
 
 @sandbox_router.get("/config")

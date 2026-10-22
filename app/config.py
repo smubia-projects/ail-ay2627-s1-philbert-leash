@@ -1,7 +1,7 @@
 """Configuration, all read from environment variables.
 
-Nothing secret is ever hard-coded. Locally, put values in a .env file;
-on Render, set them under the service's Environment tab.
+Nothing secret is ever hard-coded. Locally, put values in a .env file; on
+Cloud Run they come from the DOTENV secret rendered by the deploy workflow.
 """
 import hashlib
 import hmac
@@ -97,6 +97,15 @@ PUBLIC_REAL_BUDGET_USD = _float("PUBLIC_REAL_BUDGET_USD", 0.20)          # all v
 SANDBOX_REAL_PER_VISITOR_USD = _float("SANDBOX_REAL_PER_VISITOR_USD", 0.01)  # each visitor's share
 SANDBOX_REAL_MAX_TOKENS = 150        # output cap per public real call
 SANDBOX_REAL_MAX_PROMPT_CHARS = 8000 # input cap per public real call
+
+# --- CORS ------------------------------------------------------------------------
+# The demo pages are served from Vercel, a different origin. Comma-separated list
+# of the exact origins allowed to call this API, e.g. https://<project>.vercel.app
+CORS_ORIGINS = [
+    o.strip().rstrip("/")
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
 
 # --- Database -----------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./leash.db")
