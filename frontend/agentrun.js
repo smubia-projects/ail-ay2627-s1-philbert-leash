@@ -293,7 +293,8 @@ window.LeashRun = (() => {
       try {
         issued = await issue(choice, Number(form.elements.budget.value), 40, "task-agent");
       } catch (err) {
-        if (!choice.real) throw err;
+        // Over the AI limit (429, CTA shown) or paused (503): the run stops; it never switches to the fake AI.
+        if (!choice.real || err.rateLimited || err.paused) throw err;
         step(`<span class="run-tag">Note</span>${esc(err.message)} This run uses the free fake AI.`, "run-note");
         choice = choices().find((c) => !c.real);
         issued = await issue(choice, 0.5, 40, "task-agent");
@@ -435,7 +436,8 @@ window.LeashRun = (() => {
       try {
         await run();
       } catch (err) {
-        if (err.message !== "unauthorized") step(`<span class="run-tag">Something went wrong</span>${esc(err.message)}`, "run-refused");
+        if (err.rateLimited || err.paused) step(`<span class="run-tag">Stopped</span>${esc(err.message)}`, "run-refused");
+        else if (err.message !== "unauthorized") step(`<span class="run-tag">Something went wrong</span>${esc(err.message)}`, "run-refused");
       }
       st.busy = false;
       $("start").disabled = false;
