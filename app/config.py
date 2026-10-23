@@ -71,16 +71,16 @@ def _optional(name: str) -> str:
 
 # The real AI goes through OpenRouter's OpenAI-compatible API. The OPENAI_* names
 # below are kept because the rest of the app calls this upstream "openai".
-OPENAI_BASE_URL = (_optional("API_BASE_URL") or _optional("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/")
+OPENAI_BASE_URL = (_optional("API_BASE_URL") or _optional("OPENROUTER_BASE_URL") or "https://api.apiyi.com/v1").rstrip("/")
 OPENAI_API_KEY = (_optional("API_KEY") or _optional("OPENROUTER_API_KEY"))
-OPENAI_MODEL = (_optional("MODEL_NAME") or _optional("OPENROUTER_MODEL")) or "openai/gpt-4o-mini"
+OPENAI_MODEL = (_optional("MODEL_NAME") or _optional("OPENROUTER_MODEL")) or "gpt-5.4-nano"
 OPENAI_ENABLED = bool(OPENAI_API_KEY and OPENAI_MODEL)
 
-# Prices in USD per 1M tokens for OPENROUTER_MODEL (defaults: openai/gpt-4o-mini on
-# OpenRouter). They size the worst-case estimate reserved before each call; the
-# settled cost uses the `usage.cost` OpenRouter returns, falling back to these.
-PRICE_INPUT_PER_1M = _float("PRICE_INPUT_PER_1M", 0.15)
-PRICE_OUTPUT_PER_1M = _float("PRICE_OUTPUT_PER_1M", 0.60)
+# Prices in USD per 1M tokens for MODEL_NAME (defaults: gpt-5.4-nano on apiyi). They size
+# the worst-case estimate reserved before each call and settle each call from its token
+# usage (a provider-reported `usage.cost` is used instead when present).
+PRICE_INPUT_PER_1M = _float("PRICE_INPUT_PER_1M", 0.20)
+PRICE_OUTPUT_PER_1M = _float("PRICE_OUTPUT_PER_1M", 1.25)
 # Cap on output tokens per real call if the agent doesn't set one.
 DEFAULT_MAX_COMPLETION_TOKENS = int(_float("DEFAULT_MAX_COMPLETION_TOKENS", 300))
 

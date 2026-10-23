@@ -205,8 +205,8 @@ Backend (see `.env.example`):
 | `DATABASE_URL` | yes in production | Neon Postgres, `postgresql://...neon.tech/db?sslmode=require`. Locally, SQLite is used if unset. |
 | `CORS_ORIGINS` | yes in production | Comma-separated origins allowed to call the API, e.g. the Vercel URL. |
 | `API_KEY` | no | Enables real AI through OpenRouter. Without it the demo is fake-AI only. |
-| `MODEL_NAME` | no | The only model real-AI passes may use. Default `openai/gpt-4o-mini`. |
-| `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | The model's prices in USD per 1M tokens, used for the worst-case estimate before each call (the settled cost uses OpenRouter's reported `usage.cost`). Defaults 0.15 / 0.60 match `openai/gpt-4o-mini`. |
+| `MODEL_NAME` | no | The only model real-AI passes may use. Default `gpt-5.4-nano`. |
+| `PRICE_INPUT_PER_1M`, `PRICE_OUTPUT_PER_1M` | no | The model's prices in USD per 1M tokens, used for the worst-case estimate before each call and to settle each call from its token usage. Defaults 0.20 / 1.25 match `gpt-5.4-nano` on apiyi. |
 | `SANDBOX_REAL_MAX_PASS_USD` | no | Largest money limit a real-AI pass in the public demo can carry. Default 0.01. |
 | `RATE_LIMIT_AGENT_MAX`, `RATE_LIMIT_AGENT_CALL_MAX` | no | Fallback per-IP limits for real-AI runs and real calls when the central control sheet has no row. Defaults 5 and 40. |
 | `DEFAULT_MAX_COMPLETION_TOKENS` | no | Output cap per real call if the agent sets none. Default 300. |

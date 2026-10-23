@@ -100,8 +100,6 @@ def openai_completion(body: dict) -> dict:
     payload["stream"] = False
     if "max_tokens" not in payload and "max_completion_tokens" not in payload:
         payload["max_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
-    # Ask OpenRouter to report the call's real cost in `usage.cost`.
-    payload["usage"] = {"include": True}
     try:
         response = httpx.post(
             f"{base_url}/chat/completions",
