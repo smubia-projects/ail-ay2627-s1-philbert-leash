@@ -36,8 +36,6 @@ def _fake_reply(prompt: str) -> str:
         return "Thanks for your email. We'll get back to you shortly. Maya's Shop"
     if prompt.startswith("Reply to the auto-reply"):
         return "Thank you for letting us know. Maya's Shop"
-    if "say hello" in prompt.lower():  # the workspace's "Try it" button
-        return "Hello! I can hear you. This reply came from Leash's free practice AI."
     return next(_FAKE_REPLIES)
 
 
@@ -94,19 +92,16 @@ def _scrub(message: str, api_key: str) -> str:
     return _KEYLIKE.sub("[key]", message)
 
 
-def openai_completion(body: dict, base_url: str = "", api_key: str = "") -> dict:
-    """Forward to an OpenAI-compatible API. This is the ONLY place a real key is used.
-
-    With no arguments it uses the server's own key from the environment. For a
-    team's stored key ("bring your own key"), the caller passes the base URL
-    and the key it has just decrypted.
-    """
-    base_url = (base_url or config.OPENAI_BASE_URL).rstrip("/")
-    api_key = api_key or config.OPENAI_API_KEY
+def openai_completion(body: dict) -> dict:
+    """Forward to the OpenAI-compatible upstream. This is the ONLY place the real key is used."""
+    base_url = config.OPENAI_BASE_URL
+    api_key = config.OPENAI_API_KEY
     payload = dict(body)
     payload["stream"] = False
     if "max_tokens" not in payload and "max_completion_tokens" not in payload:
-        payload["max_completion_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
+        payload["max_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
+    # Ask OpenRouter to report the call's real cost in `usage.cost`.
+    payload["usage"] = {"include": True}
     try:
         response = httpx.post(
             f"{base_url}/chat/completions",
@@ -129,6 +124,9 @@ def cost_of(kind: str, usage: dict) -> float:
     """`kind` is "fake" for the free fake AI, anything else for a real provider."""
     if kind == "fake":
         return config.FAKE_COST_PER_CALL
+    reported = usage.get("cost")
+    if isinstance(reported, (int, float)) and not isinstance(reported, bool) and reported >= 0:
+        return float(reported)  # OpenRouter's own figure for this call, in USD
     prompt = usage.get("prompt_tokens", 0) or 0
     completion = usage.get("completion_tokens", 0) or 0
     return (prompt * config.PRICE_INPUT_PER_1M + completion * config.PRICE_OUTPUT_PER_1M) / 1_000_000

@@ -62,7 +62,7 @@ def scan_for_secrets(conn, text: str) -> list[str]:
     """Return a description of each kind of secret found in the text."""
     found = []
     if config.OPENAI_API_KEY and config.OPENAI_API_KEY in text:
-        found.append("the server's real OpenAI key")
+        found.append("the server's real API key")
     for candidate in _CANARY_SHAPE.findall(text):
         if find_canary(conn, candidate):
             found.append("a trap key")
