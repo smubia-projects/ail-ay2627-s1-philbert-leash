@@ -8,9 +8,9 @@ window.LeashCTA = (() => {
     name: "Leash",
     emoji: "\u{1F9AE}",
     accentColor: "#2b4c7e", // set in cta.css as --rl-accent
-    headline: "Your agent runs hit their own leash!",
+    headline: "Your agents ran until the budget said stop!",
     description:
-      "You've run {count} real-AI agents through Leash in this demo, and the demo's limit held just like an agent's budget does. Come back later for more, or build safety-first AI with us.",
+      "Want to build safety-first AI that keeps autonomous tools inside their limits? Small teams at AI Lodge take a rough prototype all the way to a polished, public demo.",
     programme: "AI Lodge",
     programmeLink: "https://www.smubia.com/ailodge",
     githubLink: "https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash",
