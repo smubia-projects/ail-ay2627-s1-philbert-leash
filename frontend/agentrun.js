@@ -4,8 +4,8 @@
 // loop through Leash, and watch Leash stop it at the limit. Then compare what
 // the agent says it did with Leash's sealed record, and try to fake that record.
 //
-// Shared by the public demo (/try), the control room (/control) and team
-// workspaces (/app). Each page passes in its own API helper and AI choices.
+// Used by the public demo (/try). The page passes in its API helper and the
+// API server's origin (the pages and the API are on different origins).
 
 window.LeashRun = (() => {
   const TASKS = [
@@ -171,7 +171,7 @@ window.LeashRun = (() => {
         } else {
           ai.innerHTML = rd.available
             ? "<strong>Free fake AI, pretend money.</strong> Pick the real AI to spend real fractions of a cent instead."
-            : "The real-AI budget for this demo is used up, so it runs on the free fake AI. Sign up to run agents on your own key.";
+            : "The real-AI budget for this demo is used up, so it runs on the free fake AI. Self-host Leash to run agents on your own key.";
         }
       } else if (mode === "operator") {
         const server = selected().value === "openai";
@@ -259,7 +259,7 @@ window.LeashRun = (() => {
     }
 
     async function call(token, model, messages, maxTokens) {
-      const res = await fetch("/v1/chat/completions", {
+      const res = await fetch(`${opts.server || ""}/v1/chat/completions`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
         body: JSON.stringify({ model, messages, max_tokens: maxTokens }),

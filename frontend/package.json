@@ -1,0 +1,8 @@
+{
+  "name": "ail-ay2627-s1-philbert-leash-frontend",
+  "private": true,
+  "description": "Leash demo pages (static), deployed on Vercel",
+  "scripts": {
+    "build": "node ./build.js"
+  }
+}
