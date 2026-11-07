@@ -1,7 +1,10 @@
-"""In-memory sliding-window rate limits.
+"""In-memory sliding-window limits for abuse protection on the free paths.
 
-Fine for a single-process app (Leash runs one worker on purpose). A larger
-deployment would move this to Redis or similar.
+These guard the fake-AI proxy, the unprotected demo path and sandbox creation
+against floods; they reset on a cold start, which is fine for that job. The
+real-AI agent run is limited by the shared Upstash engine instead (rate_limit.py),
+and real spend by the dollar budgets kept in the database. Fine for a
+single-process app (one uvicorn worker, Cloud Run --max-instances=1).
 """
 import threading
 import time

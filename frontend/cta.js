@@ -12,9 +12,9 @@ window.LeashCTA = (() => {
     description:
       "You've run {count} real-AI agents through Leash in this demo, and the demo's limit held just like an agent's budget does. Come back later for more, or build safety-first AI with us.",
     programme: "AI Lodge",
-    programmeLink: "https://www.smubia.com/ai-lodge",
+    programmeLink: "https://www.smubia.com/ailodge",
     githubLink: "https://github.com/smubia-projects/ail-ay2627-s1-philbert-leash",
-    showcaseLink: "https://www.smubia.com/showcase",
+    showcaseLink: "https://www.smubia.com/Projects",
   };
 
   let modal = null;
@@ -58,8 +58,8 @@ window.LeashCTA = (() => {
     dismiss.type = "button";
     body.append(
       link("rl-btn-primary", `Join ${CTA.programme}`, CTA.programmeLink),
-      link("rl-btn-secondary", "Self-host from GitHub", CTA.githubLink),
       link("rl-btn-secondary", "Explore other projects", CTA.showcaseLink),
+      link("rl-btn-secondary", "View on GitHub", CTA.githubLink),
       dismiss
     );
     card.append(banner, body);
