@@ -73,10 +73,11 @@ def _optional(name: str) -> str:
 # below are kept because the rest of the app calls this upstream "openai".
 OPENAI_BASE_URL = (_optional("API_BASE_URL") or _optional("OPENROUTER_BASE_URL") or "https://api.apiyi.com/v1").rstrip("/")
 OPENAI_API_KEY = (_optional("API_KEY") or _optional("OPENROUTER_API_KEY"))
-OPENAI_MODEL = (_optional("MODEL_NAME") or _optional("OPENROUTER_MODEL")) or "gpt-5.4-nano"
+OPENAI_MODEL = (_optional("MODEL_NAME") or _optional("OPENROUTER_MODEL")) or "deepseek-v4-1-flash-260910"
 OPENAI_ENABLED = bool(OPENAI_API_KEY and OPENAI_MODEL)
 
-# Prices in USD per 1M tokens for MODEL_NAME (defaults: gpt-5.4-nano on apiyi). They size
+# Prices in USD per 1M tokens for MODEL_NAME. The defaults are gpt-5.4-nano's apiyi prices, kept as a safe upper
+# bound for deepseek-v4-1-flash-260910 (OpenRouter lists it at 0.036 / 0.684). They size
 # the worst-case estimate reserved before each call and settle each call from its token
 # usage (a provider-reported `usage.cost` is used instead when present).
 PRICE_INPUT_PER_1M = _float("PRICE_INPUT_PER_1M", 0.20)

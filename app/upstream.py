@@ -100,6 +100,9 @@ def openai_completion(body: dict) -> dict:
     payload["stream"] = False
     if "max_tokens" not in payload and "max_completion_tokens" not in payload:
         payload["max_tokens"] = config.DEFAULT_MAX_COMPLETION_TOKENS
+    # DeepSeek thinks first by default, which would spend the small token cap and the 60 s timeout.
+    if "deepseek" in str(payload.get("model", "")).lower():
+        payload.setdefault("reasoning_effort", "none")
     try:
         response = httpx.post(
             f"{base_url}/chat/completions",
